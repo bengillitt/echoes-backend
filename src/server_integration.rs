@@ -12,20 +12,25 @@ use super::db_integration;
 
 #[derive(Clone)]
 struct AppState {
-    tx: mpsc::Sender<String>,
+    pool: SqlitePool,
 }
 
 #[derive(Deserialize)]
-struct Message {
-    message: String,
+struct NewUser {
+    username: String,
+    email: String,
+    hashed_password: String,
 }
 
-pub async fn spawn_server(tx: mpsc::Sender<String>,mut rx: mpsc::Receiver<SqlitePool>) {
-    let app_tx = tx.clone();
+#[derive(Deserialize)]
+struct UserSearch {
+    username: String,
+}
 
-    let state = AppState { tx: app_tx};
-
+pub async fn spawn_server(mut rx: mpsc::Receiver<SqlitePool>) {
     let pool = rx.recv().await.unwrap();
+
+    let state = AppState {pool: pool};
 
     let app = Router::new()
         .route(
@@ -33,19 +38,21 @@ pub async fn spawn_server(tx: mpsc::Sender<String>,mut rx: mpsc::Receiver<Sqlite
             get(|| async { "Get Echoes" }).post(|| async { "Post Echoes" }),
         )
         .route(
-            "/Send-to-db",
-            get(|| async {}).post(
-                |State(server_tx): State<AppState>, Json(payload): Json<Message>| async move {
-                    db_integration::upload_user(&pool);
-
-                    return "Message sent successfully";
-                },
-            ),
-        )
-        .with_state(state);
-
-    tx.try_send("Cross Threaded COMMUNICATION!!!".to_string());
+            "/createUser",
+            get(|| async {}).post(create_user),
+        ).route(
+            "/searchUser",
+            get(search_user),
+        ).with_state(state);
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
     axum::serve(listener, app).await.unwrap();
+}
+
+async fn create_user(State(pool_state): State<AppState>, Json(payload): Json<NewUser>) -> String {
+    return db_integration::upload_user(&pool_state.pool, payload.username, payload.email, payload.hashed_password).await;
+}
+
+async fn search_user(State(pool_state): State<AppState>, Json(payload): Json<UserSearch>) -> String {
+    return db_integration::get_user(&pool_state.pool, payload.username).await;
 }

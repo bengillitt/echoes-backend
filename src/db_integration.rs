@@ -14,12 +14,12 @@ pub async fn get_pool(tx: mpsc::Sender<SqlitePool>) {
 
     println!("Database Ready");
 
-    tx.try_send(pool);
+    let _ = tx.try_send(pool);
 }
 
-pub async fn upload_user(pool: &SqlitePool) -> String {
+pub async fn upload_user(pool: &SqlitePool, username: String, email: String, hashed_password: String) -> String {
     println!("Uploading User");
-    let return_data = match sqlx::query("INSERT INTO users (email, username, hashed_password) VALUES ('test@test1.com', 'test1', 'password')").execute(pool).await {
+    let return_data = match sqlx::query("INSERT INTO users (email, username, hashed_password) VALUES ($1, $2, $3)").bind(email).bind(username).bind(hashed_password).execute(pool).await {
         Ok(_) => "User Uploaded".to_string(),
         Err(err) => match err {
             sqlx::Error::Database(err) => handle_db_error(&*err.code().unwrap()).to_string(),
@@ -40,14 +40,19 @@ struct User {
     hashed_password: String,
 }
 
-async fn get_user(pool: &SqlitePool) -> String {
+pub async fn get_user(pool: &SqlitePool, username: String) -> String {
     let data: Vec<User> =
-        sqlx::query_as::<_, User>("SELECT id, email, username, hashed_password FROM users")
+        sqlx::query_as::<_, User>("SELECT id, email, username, hashed_password FROM users WHERE username LIKE $1").bind(format!("{}%", username))
             .fetch_all(pool)
             .await
             .unwrap();
     
-    let return_data =  format!("UserID: {} \n email: {} \n username: {} \n hashed_password: {}", data[0].id, data[0].email, data[0].username, data[0].hashed_password).to_string();
+    let mut return_data = String::new();
+
+    for i in data {
+        return_data.push_str(&(format!("UserID: {} \n email: {} \n username: {} \n hashed_password: {}\n\n", i.id, i.email, i.username, i.hashed_password)));
+    }
+
     println!("{}", return_data);
     return return_data;
 }
@@ -55,6 +60,6 @@ async fn get_user(pool: &SqlitePool) -> String {
 fn handle_db_error(err_code: &str) -> String {
     match err_code {
         "2067" => "DB element not unique".to_string(),
-        _ => panic!("db error"),
+        _ => panic!("db error: Err Code: {}", err_code),
     }
 }
