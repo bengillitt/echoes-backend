@@ -19,10 +19,13 @@ pub async fn get_pool(tx: mpsc::Sender<SqlitePool>) {
 
 pub async fn upload_user(pool: &SqlitePool, username: String, email: String, hashed_password: String) -> String {
     println!("Uploading User");
-    let return_data = match sqlx::query("INSERT INTO users (email, username, hashed_password) VALUES ($1, $2, $3)").bind(email).bind(username).bind(hashed_password).execute(pool).await {
+    let return_data = match sqlx::query("INSERT INTO tblUsers (email, username, hashed_password) VALUES ($1, $2, $3)").bind(email).bind(username).bind(hashed_password).execute(pool).await {
         Ok(_) => "User Uploaded".to_string(),
         Err(err) => match err {
-            sqlx::Error::Database(err) => handle_db_error(&*err.code().unwrap()).to_string(),
+            sqlx::Error::Database(err) => {
+                println!("{}", err);
+                handle_db_error(&*err.code().unwrap()).to_string()
+            },
             _ => panic!("Unexpected error"),
         },
     };
@@ -38,11 +41,12 @@ struct User {
     email: String,
     username: String,
     hashed_password: String,
+    is_admin: bool,
 }
 
 pub async fn get_user(pool: &SqlitePool, username: String) -> String {
     let data: Vec<User> =
-        sqlx::query_as::<_, User>("SELECT id, email, username, hashed_password FROM users WHERE username LIKE $1").bind(format!("{}%", username))
+        sqlx::query_as::<_, User>("SELECT id, email, username, hashed_password, is_admin FROM tblUsers WHERE username LIKE $1").bind(format!("{}%", username))
             .fetch_all(pool)
             .await
             .unwrap();
@@ -50,7 +54,7 @@ pub async fn get_user(pool: &SqlitePool, username: String) -> String {
     let mut return_data = String::new();
 
     for i in data {
-        return_data.push_str(&(format!("UserID: {} \n email: {} \n username: {} \n hashed_password: {}\n\n", i.id, i.email, i.username, i.hashed_password)));
+        return_data.push_str(&(format!("UserID: {} \n email: {} \n username: {} \n hashed_password: {}\n is_admin: {}\n\n", i.id, i.email, i.username, i.hashed_password, i.is_admin)));
     }
 
     println!("{}", return_data);
