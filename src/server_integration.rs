@@ -1,10 +1,14 @@
 use axum::{Router, routing::get};
 
+use sqlx::sqlite::SqlitePool;
+
 use axum::extract::{Json, State};
 
 use tokio::sync::mpsc;
 
 use serde::Deserialize;
+
+use super::db_integration;
 
 #[derive(Clone)]
 struct AppState {
@@ -16,10 +20,12 @@ struct Message {
     message: String,
 }
 
-pub async fn spawn_server(tx: mpsc::Sender<String>,rx: mpsc::Receiver<String>) {
+pub async fn spawn_server(tx: mpsc::Sender<String>,mut rx: mpsc::Receiver<SqlitePool>) {
     let app_tx = tx.clone();
 
     let state = AppState { tx: app_tx};
+
+    let pool = rx.recv().await.unwrap();
 
     let app = Router::new()
         .route(
@@ -30,9 +36,7 @@ pub async fn spawn_server(tx: mpsc::Sender<String>,rx: mpsc::Receiver<String>) {
             "/Send-to-db",
             get(|| async {}).post(
                 |State(server_tx): State<AppState>, Json(payload): Json<Message>| async move {
-                    server_tx
-                        .tx
-                        .try_send(format!("{}", payload.message).to_string());
+                    db_integration::upload_user(&pool);
 
                     return "Message sent successfully";
                 },

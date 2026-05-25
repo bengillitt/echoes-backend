@@ -2,7 +2,7 @@ pub use sqlx::sqlite::SqlitePool;
 
 use tokio::sync::mpsc;
 
-pub async fn get_pool(tx: mpsc::Sender<String>, mut rx: mpsc::Receiver<String>) {
+pub async fn get_pool(tx: mpsc::Sender<SqlitePool>) {
     let pool = SqlitePool::connect("sqlite:./data/db.sqlite")
         .await
         .expect("Failed to connect to db");
@@ -14,21 +14,10 @@ pub async fn get_pool(tx: mpsc::Sender<String>, mut rx: mpsc::Receiver<String>) 
 
     println!("Database Ready");
 
-    loop {
-        let receivedData = rx.recv().await.unwrap();
-        println!("{receivedData}");
-
-        let return_data = match &receivedData[..] {
-            "upload" => upload_user(&pool).await,
-            "get" => get_user(&pool).await,
-            _ => "".to_string(),
-        };
-
-        tx.try_send(return_data);
-    }
+    tx.try_send(pool);
 }
 
-async fn upload_user(pool: &SqlitePool) -> String {
+pub async fn upload_user(pool: &SqlitePool) -> String {
     println!("Uploading User");
     let return_data = match sqlx::query("INSERT INTO users (email, username, hashed_password) VALUES ('test@test1.com', 'test1', 'password')").execute(pool).await {
         Ok(_) => "User Uploaded".to_string(),
@@ -53,10 +42,10 @@ struct User {
 
 async fn get_user(pool: &SqlitePool) -> String {
     let data: Vec<User> =
-        (sqlx::query_as::<_, User>("SELECT id, email, username, hashed_password FROM users")
+        sqlx::query_as::<_, User>("SELECT id, email, username, hashed_password FROM users")
             .fetch_all(pool)
             .await
-            .unwrap());
+            .unwrap();
     
     let return_data =  format!("UserID: {} \n email: {} \n username: {} \n hashed_password: {}", data[0].id, data[0].email, data[0].username, data[0].hashed_password).to_string();
     println!("{}", return_data);
