@@ -43,7 +43,11 @@ pub async fn spawn_server(mut rx: mpsc::Receiver<SqlitePool>) {
         ).route(
             "/searchUser",
             get(search_user),
-        ).with_state(state);
+        ).route(
+            "/createEmbedding",
+            get(create_embedding)
+        )
+        .with_state(state);
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
     axum::serve(listener, app).await.unwrap();
@@ -55,4 +59,8 @@ async fn create_user(State(pool_state): State<AppState>, Json(payload): Json<New
 
 async fn search_user(State(pool_state): State<AppState>, Json(payload): Json<UserSearch>) -> String {
     return db_integration::get_user(&pool_state.pool, payload.username).await;
+}
+
+async fn create_embedding(State(pool_state): State<AppState>) -> String {
+    return db_integration::upload_embedding(&pool_state.pool, vec![1.1, 4.8]).await;
 }

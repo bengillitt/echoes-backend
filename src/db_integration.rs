@@ -61,6 +61,24 @@ pub async fn get_user(pool: &SqlitePool, username: String) -> String {
     return return_data;
 }
 
+pub async fn upload_embedding(pool: &SqlitePool, embedding: Vec<f32>) -> String {
+    println!("uploading embedding!");
+
+    let blob = vec_to_blob(&embedding);
+    let return_data = match sqlx::query("INSERT INTO tblEmbeddings (embedding) VALUES ($1)").bind(blob).execute(pool).await {
+        Ok(_) => "Uploaded Embedding".to_string(),
+        Err(err) => match err {
+            sqlx::Error::Database(err) => {
+                println!("{}", err);
+                handle_db_error(&*err.code().unwrap()).to_string()
+            },
+            _ => panic!("Unexpected error"),
+        },
+    };
+
+    return return_data;
+}
+
 fn handle_db_error(err_code: &str) -> String {
     match err_code {
         "2067" => "DB element not unique".to_string(),
