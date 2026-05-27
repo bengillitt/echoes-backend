@@ -67,3 +67,11 @@ fn handle_db_error(err_code: &str) -> String {
         _ => panic!("db error: Err Code: {}", err_code),
     }
 }
+
+fn vec_to_blob(v: &[f32]) -> Vec<u8> {
+    v.iter().flat_map(|x| x.to_le_bytes()).collect()
+}
+
+fn blob_to_vec(b: &[u8]) -> Vec<f32> {
+    b.chunks_exact(4).map(|x| f32::from_le_bytes(x.try_into().unwrap())).collect()
+}
