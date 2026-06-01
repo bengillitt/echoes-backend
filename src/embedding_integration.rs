@@ -31,7 +31,7 @@ pub async fn get_embedding(prompt: String) -> Vec<f32> {
     .bearer_auth(env::var("OPENAI_API_KEY").unwrap()).json(
         &OpenAIEmbedRequest {
             input: prompt,
-            model: "text-embedding-3-small".to_string(),
+            model: "text-embedding-3-large".to_string(), // model can be changes if needed
         }
     ).send().await.unwrap().json::<OpenAIEmbedResponse>().await.unwrap();
 
