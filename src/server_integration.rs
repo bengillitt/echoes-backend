@@ -46,6 +46,9 @@ pub async fn spawn_server(mut rx: mpsc::Receiver<SqlitePool>) {
         ).route(
             "/createEmbedding",
             get(create_embedding)
+        ).route(
+            "/getEmbeddings",
+            get(get_embeddings)
         )
         .with_state(state);
 
@@ -63,4 +66,9 @@ async fn search_user(State(pool_state): State<AppState>, Json(payload): Json<Use
 
 async fn create_embedding(State(pool_state): State<AppState>) -> String {
     return db_integration::upload_embedding(&pool_state.pool, vec![1.1, 4.8]).await;
+}
+
+async fn get_embeddings(State(pool_state): State<AppState>) -> String {
+     println!("{:?}", db_integration::get_embeddings(&pool_state.pool).await);
+     return "Success".to_string();
 }

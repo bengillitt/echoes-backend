@@ -1,5 +1,6 @@
 mod db_integration;
 mod server_integration;
+mod embedding_integration;
 
 use futures::executor;
 use tokio::task;
