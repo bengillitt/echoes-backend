@@ -46,4 +46,12 @@ pub async fn get_embedding(prompt: String) -> Vec<f32> {
     // ).send().await.unwrap().text().await;
 
     // return res.unwrap();
-} 
+}
+
+async fn calculate_dot_product(v1: Vec<f32>, v2: Vec<f32>) -> Result<f32, String> {
+    if (v1.len() != v2.len()) {
+        return Err("Vector lengths don't match".to_string());
+    }
+
+    return Ok(1.0);
+}
