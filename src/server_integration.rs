@@ -8,7 +8,7 @@ use tokio::sync::mpsc;
 
 use serde::Deserialize;
 
-use super::db_integration;
+use super::{db_integration, embedding_integration};
 
 #[derive(Clone)]
 struct AppState {
@@ -49,6 +49,9 @@ pub async fn spawn_server(mut rx: mpsc::Receiver<SqlitePool>) {
         ).route(
             "/getEmbeddings",
             get(get_embeddings)
+        ).route(
+            "/uploadEmbedding",
+            get(|| async {}).post(upload_embedding),
         )
         .with_state(state);
 
@@ -71,4 +74,23 @@ async fn create_embedding(State(pool_state): State<AppState>) -> String {
 async fn get_embeddings(State(pool_state): State<AppState>) -> String {
      println!("{:?}", db_integration::get_embeddings(&pool_state.pool).await);
      return "Success".to_string();
+}
+
+#[derive(Deserialize)]
+struct EmbeddingPrompt {
+    prompt: String
+}
+
+async fn upload_embedding(State(pool_state): State<AppState>, Json(payload): Json<EmbeddingPrompt>) -> String {
+    println!("{:?}", embedding_integration::get_embedding(payload.prompt).await);
+    return "Success".to_string();
+}
+
+struct SimilarityPrompts {
+    prompt1: String,
+    prompt2: String,
+}
+
+async fn test_similarity(State(pool_state): State<AppState>, Json(payload): Json<SimilarityPrompts>) -> String {
+    return "In Progress".to_string();
 }
