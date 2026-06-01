@@ -52,6 +52,9 @@ pub async fn spawn_server(mut rx: mpsc::Receiver<SqlitePool>) {
         ).route(
             "/uploadEmbedding",
             get(|| async {}).post(upload_embedding),
+        ).route(
+            "/calculateSimilarity",
+            get(|| async {}).post(test_similarity),
         )
         .with_state(state);
 
@@ -81,16 +84,20 @@ struct EmbeddingPrompt {
     prompt: String
 }
 
-async fn upload_embedding(State(pool_state): State<AppState>, Json(payload): Json<EmbeddingPrompt>) -> String {
+async fn upload_embedding(Json(payload): Json<EmbeddingPrompt>) -> String {
     println!("{:?}", embedding_integration::get_embedding(payload.prompt).await);
     return "Success".to_string();
 }
 
+#[derive(Deserialize)]
 struct SimilarityPrompts {
     prompt1: String,
     prompt2: String,
 }
 
-async fn test_similarity(State(pool_state): State<AppState>, Json(payload): Json<SimilarityPrompts>) -> String {
-    return "In Progress".to_string();
+async fn test_similarity(Json(payload): Json<SimilarityPrompts>) -> String {
+    let embedding1 = embedding_integration::get_embedding(payload.prompt1).await;
+    let embedding2 = embedding_integration::get_embedding(payload.prompt2).await;
+    
+    return embedding_integration::calculate_similarity(&embedding1, &embedding2).to_string();
 }
