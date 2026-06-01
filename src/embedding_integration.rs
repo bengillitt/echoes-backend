@@ -22,20 +22,28 @@ struct OpenAIEmbedData {
     embedding: Vec<f32>,
 }
 
-pub async fn get_embedding(prompt: String) -> Vec<f32> {
+pub async fn get_embedding(prompt: String) -> Result<Vec<f32>, String> {
     dotenv().ok();
 
     let client = reqwest::Client::new();
 
-    let res = client.post("https://api.openai.com/v1/embeddings")
+    let res = match client.post("https://api.openai.com/v1/embeddings")
     .bearer_auth(env::var("OPENAI_API_KEY").unwrap()).json(
         &OpenAIEmbedRequest {
             input: prompt,
             model: "text-embedding-3-large".to_string(), // model can be changes if needed
         }
-    ).send().await.unwrap().json::<OpenAIEmbedResponse>().await.unwrap();
+    ).send().await {
+        Ok(d) => d,
+        Err(e) => return Err(format!("Failed to fetch embedding. Failed with {}", e)),
+    };
 
-    return res.data[0].embedding.clone();
+    let json_data = match res.json::<OpenAIEmbedResponse>().await {
+        Ok(d) => d,
+        Err(e) => return Err(format!("Failed to convert embedding into json. Failed with {}", e)),
+    };
+
+    return Ok(json_data.data[0].embedding.clone());
 
     // let res = client.post("https://api.openai.com/v1/embeddings")
     // .bearer_auth(env::var("OPENAI_API_KEY").unwrap()).json(

@@ -27,7 +27,5 @@ pub async fn upload_to_llm(prompt: String) -> Result<String, String> {
         model: "gpt-5.4-mini".to_string(),
     }).send().await.unwrap().text().await.unwrap();
 
-
-
     return Ok(res);
 }

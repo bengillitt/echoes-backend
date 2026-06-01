@@ -38,26 +38,26 @@ pub async fn spawn_server(mut rx: mpsc::Receiver<SqlitePool>) {
             get(|| async { "Get Echoes" }).post(|| async { "Post Echoes" }),
         )
         .route(
-            "/createUser",
-            get(|| async {}).post(create_user),
+            "/register",
+            get(|| async {}).post(register_user),
         ).route(
-            "/searchUser",
-            get(search_user),
+            "/login",
+            get(|| async {}).post(login_user),
         ).route(
-            "/createEmbedding",
-            get(create_embedding)
+            "/getSimilarChats",
+            get(get_similar_chats)
         ).route(
-            "/getEmbeddings",
-            get(get_embeddings)
+            "/createNewChat",
+            get(|| async {}).post(create_new_chat),
         ).route(
-            "/uploadEmbedding",
-            get(|| async {}).post(upload_embedding),
+            "/continueChat",
+            get(|| async {}).post(continue_chat),
         ).route(
-            "/calculateSimilarity",
-            get(|| async {}).post(test_similarity),
+            "/lookupChats",
+            get(|| async {}).post(lookup_chats)
         ).route(
-            "/uploadToLLM",
-            get(|| async {}).post(upload_to_llm),
+            "/chatInteraction",
+            get(|| async {}).post(chat_interaction)
         )
         .with_state(state);
 
@@ -65,19 +65,11 @@ pub async fn spawn_server(mut rx: mpsc::Receiver<SqlitePool>) {
     axum::serve(listener, app).await.unwrap();
 }
 
-async fn create_user(State(pool_state): State<AppState>, Json(payload): Json<NewUser>) -> String {
+async fn register_user(State(pool_state): State<AppState>, Json(payload): Json<NewUser>) -> String {
     return db_integration::upload_user(&pool_state.pool, payload.username, payload.email, payload.hashed_password).await;
 }
 
-async fn search_user(State(pool_state): State<AppState>, Json(payload): Json<UserSearch>) -> String {
-    return db_integration::get_user(&pool_state.pool, payload.username).await;
-}
-
-async fn create_embedding(State(pool_state): State<AppState>) -> String {
-    return db_integration::upload_embedding(&pool_state.pool, vec![1.1, 4.8]).await;
-}
-
-async fn get_embeddings(State(pool_state): State<AppState>) -> String {
+async fn get_similar_chats(State(pool_state): State<AppState>) -> String {
      println!("{:?}", db_integration::get_embeddings(&pool_state.pool).await);
      return "Success".to_string();
 }
@@ -87,12 +79,14 @@ struct Prompt {
     prompt: String
 }
 
-async fn upload_embedding(Json(payload): Json<Prompt>) -> String {
-    println!("{:?}", embedding_integration::get_embedding(payload.prompt).await);
-    return "Success".to_string();
-}
+// async fn upload_embedding(Json(payload): Json<Prompt>) -> String {
+//     return match embedding_integration::get_embedding(payload.prompt).await {
+//         Ok(v) => format!("{:?}", v),
+//         Err(e) => e,
+//     };
+// }
 
-async fn upload_to_llm(Json(payload): Json<Prompt>) -> String {
+async fn create_new_chat(Json(payload): Json<Prompt>) -> String {
     return llm_integration::upload_to_llm(payload.prompt).await.unwrap();
 }
 
@@ -103,8 +97,15 @@ struct SimilarityPrompts {
 }
 
 async fn test_similarity(Json(payload): Json<SimilarityPrompts>) -> String {
-    let embedding1 = embedding_integration::get_embedding(payload.prompt1).await;
-    let embedding2 = embedding_integration::get_embedding(payload.prompt2).await;
+    let embedding1 = match embedding_integration::get_embedding(payload.prompt1).await {
+        Ok(v) => v,
+        Err(e) => return e,
+    };
+    
+    let embedding2 = match embedding_integration::get_embedding(payload.prompt2).await {
+        Ok(v) => v,
+        Err(e) => return e,
+    };
     
     return embedding_integration::calculate_similarity(&embedding1, &embedding2).to_string();
 }
