@@ -66,7 +66,7 @@ fn calculate_magnitude(v: &Vec<f32>,) -> f32 {
     let mut total_squares = 0.0;
 
     for i in 0..v.len() {
-        total_squares = v[i] * v[i];
+        total_squares += v[i] * v[i];
     }
 
     return total_squares.sqrt();
