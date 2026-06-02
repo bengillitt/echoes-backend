@@ -18,8 +18,21 @@ pub async fn get_pool(tx: mpsc::Sender<SqlitePool>) {
 }
 
 pub async fn register_user(pool: &SqlitePool, username: String, email: String, hashed_password: String) -> Result<String, String> {
-    if !email.contains("@") || !email.contains(".") { // Could change this so it scans for TLDs
+    if (!email.contains("@") || !email.contains(".")) { // Could change this so it scans for TLDs
         return Err("Invalid Email".to_string());
+    }
+
+    let mut is_alphanumeric: bool = true;
+
+    for c in username.chars() {
+        if (!c.is_alphanumeric()) {
+            is_alphanumeric = false;
+            break;
+        }
+    }
+
+    if (!is_alphanumeric) {
+        return Err("Invalid Username, can't contain symbols".to_string());
     }
     
     let users = match get_user_from_username(pool, &username).await {
