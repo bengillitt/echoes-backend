@@ -58,6 +58,9 @@ pub async fn spawn_server(mut rx: mpsc::Receiver<SqlitePool>) {
         ).route(
             "/chatInteraction",
             get(|| async {}).post(chat_interaction)
+        ).route(
+            "/testSimilarity",
+            get(|| async {}).post(test_similarity)
         )
         .with_state(state);
 
@@ -66,6 +69,10 @@ pub async fn spawn_server(mut rx: mpsc::Receiver<SqlitePool>) {
 }
 
 async fn register_user(State(pool_state): State<AppState>, Json(payload): Json<NewUser>) -> String {
+    return "In Progress".to_string();
+}
+
+async fn login_user(State(pool_state): State<AppState>, Json(payload): Json<NewUser>) -> String {
     return "In Progress".to_string();
 }
 
@@ -90,6 +97,10 @@ async fn create_new_chat(Json(payload): Json<Prompt>) -> String {
     return llm_integration::upload_to_llm(payload.prompt).await.unwrap();
 }
 
+async fn continue_chat(State(pool_state): State<AppState>, Json(payload): Json<Prompt>) -> String {
+    return "In Progress".to_string();
+}
+
 #[derive(Deserialize)]
 struct SimilarityPrompts {
     prompt1: String,
@@ -108,5 +119,13 @@ async fn test_similarity(Json(payload): Json<SimilarityPrompts>) -> String {
     };
     
     return embedding_integration::calculate_similarity(&embedding1, &embedding2).to_string();
+}
+
+async fn lookup_chats(State(pool_state): State<AppState>) -> String {
+    return "In Progress".to_string();
+} 
+
+async fn chat_interaction(State(pool_state): State<AppState>) -> String {
+    return "In Progress".to_string();
 }
 
