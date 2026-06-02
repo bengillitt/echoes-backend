@@ -18,20 +18,24 @@ pub async fn get_pool(tx: mpsc::Sender<SqlitePool>) {
 }
 
 pub async fn register_user(pool: &SqlitePool, username: String, email: String, hashed_password: String) -> Result<String, String> {
-    if (!email.contains("@") || !email.contains(".")) { // Could change this so it scans for TLDs
+    if !email.contains("@") || !email.contains(".") { // Could change this so it scans for TLDs
         return Err("Invalid Email".to_string());
+    }
+
+    if username == "".to_string() {
+        return Err("Invalid username. Cannot be empty".to_string());
     }
 
     let mut is_alphanumeric: bool = true;
 
     for c in username.chars() {
-        if (!c.is_alphanumeric()) {
+        if !c.is_alphanumeric() {
             is_alphanumeric = false;
             break;
         }
     }
 
-    if (!is_alphanumeric) {
+    if !is_alphanumeric {
         return Err("Invalid Username, can't contain symbols".to_string());
     }
     
@@ -73,6 +77,52 @@ async fn upload_user(pool: &SqlitePool, username: String, email: String, hashed_
     // Handle errors better to avoid crashes (crashes would still allow the server to load, return a 200 OK, but nothing would occur)
 }
 
+pub async fn login_user(pool: &SqlitePool, username: String, email: String, hashed_password: String) -> Result<String, String> {
+    if username == "".to_string() && email == "".to_string() {
+        return Err("Must provide a username or email.".to_string());
+    }
+
+    if username != "".to_string() {
+        return login_user_with_username(pool, username, hashed_password).await;
+    } else {
+        return login_user_with_email(pool, email, hashed_password).await;
+    }
+}
+
+fn check_user_password(users: &Vec<User>, hashed_password: String) -> Result<String, String> {
+    if users.len() == 0 {
+        return Err(format!("Incorrect Credentials"));
+    }
+    
+    if users.len() == 1 {
+        if users[0].hashed_password == hashed_password {
+            return Ok("Login Successful".to_string());
+        } else {
+            return Err(format!("Incorrect Credentials"));
+        }
+    } else {
+        return Err("DB Error, more than 1 user with those credentials, contact support".to_string());
+    }
+}
+
+async fn login_user_with_username(pool: &SqlitePool, username: String, hashed_password: String) -> Result<String, String> {
+    let users = match get_user_from_username(pool, &username).await {
+        Ok(v) => v,
+        Err(e) => return Err(format!("Database Error. Failed with: \n {}", e)),
+    };
+
+    return check_user_password(&users, hashed_password);
+}
+
+async fn login_user_with_email(pool: &SqlitePool, email: String, hashed_password: String) -> Result<String, String> {
+    let users = match get_user_from_email(pool, &email).await {
+        Ok(v) => v,
+        Err(e) => return Err(format!("Failed to find user. Failed with: \n {}", e.to_string())),
+    };
+
+    return check_user_password(&users, hashed_password);
+}
+
 #[derive(Debug, sqlx::FromRow)]
 struct User {
     id: i32,
@@ -97,7 +147,7 @@ async fn get_user_from_username(pool: &SqlitePool, username: &str) -> Result<Vec
 async fn get_user_from_email(pool: &SqlitePool, email: &str) -> Result<Vec<User>, String> {
     let data: Vec<User> = 
         match sqlx::query_as::<_, User>("SELECT id, email, username, hashed_password, is_admin FROM tblUsers WHERE email = $1")
-        .bind(email).fetch_all(pool).await {
+        .bind(format!("{}", email)).fetch_all(pool).await {
             Ok(v) => v,
             Err(e) => return Err(e.to_string()),
         };
