@@ -66,7 +66,7 @@ pub async fn spawn_server(mut rx: mpsc::Receiver<SqlitePool>) {
 }
 
 async fn register_user(State(pool_state): State<AppState>, Json(payload): Json<NewUser>) -> String {
-    return db_integration::upload_user(&pool_state.pool, payload.username, payload.email, payload.hashed_password).await;
+    return "In Progress".to_string();
 }
 
 async fn get_similar_chats(State(pool_state): State<AppState>) -> String {

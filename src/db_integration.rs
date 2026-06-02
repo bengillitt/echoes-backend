@@ -17,20 +17,45 @@ pub async fn get_pool(tx: mpsc::Sender<SqlitePool>) {
     let _ = tx.try_send(pool);
 }
 
-pub async fn upload_user(pool: &SqlitePool, username: String, email: String, hashed_password: String) -> String {
+pub async fn register_user(pool: &SqlitePool, username: String, email: String, hashed_password: String) -> Result<String, String> {
+    if !email.contains("@") || !email.contains(".") { // Could change this so it scans for TLDs
+        return Err("Invalid Email".to_string());
+    }
+    
+    let users = match get_user_from_username(pool, &username).await {
+        Ok(v) => v,
+        Err(e) => return Err(e),
+    };
+
+    if users.len() > 0 {
+        return Err("Username already exists".to_string());
+    }
+
+    let users = match get_user_from_email(pool, &email).await {
+        Ok(v) => v,
+        Err(e) => return Err(e),
+    };
+
+    if users.len() > 0 {
+        return Err("Email already exists".to_string());
+    }
+
+    return upload_user(pool, username, email, hashed_password).await;
+}
+
+async fn upload_user(pool: &SqlitePool, username: String, email: String, hashed_password: String) -> Result<String, String> {
     println!("Uploading User");
     let return_data = match sqlx::query("INSERT INTO tblUsers (email, username, hashed_password) VALUES ($1, $2, $3)").bind(email).bind(username).bind(hashed_password).execute(pool).await {
         Ok(_) => "User Uploaded".to_string(),
         Err(err) => match err {
             sqlx::Error::Database(err) => {
-                println!("{}", err);
-                handle_db_error(&*err.code().unwrap()).to_string()
+                return Err(format!("Database Error. Failed with {}", err.to_string()));
             },
-            _ => panic!("Unexpected error"),
+            _ => return Err(format!("Unexpected Error. Failed with {}", err)),
         },
     };
 
-    return return_data;
+    return Ok(return_data);
     // Handle NOT UNIQUE Errors
     // Handle errors better to avoid crashes (crashes would still allow the server to load, return a 200 OK, but nothing would occur)
 }
@@ -44,21 +69,27 @@ struct User {
     is_admin: bool,
 }
 
-pub async fn get_user(pool: &SqlitePool, username: String) -> String {
+async fn get_user_from_username(pool: &SqlitePool, username: &str) -> Result<Vec<User>, String> {
     let data: Vec<User> =
-        sqlx::query_as::<_, User>("SELECT id, email, username, hashed_password, is_admin FROM tblUsers WHERE username LIKE $1").bind(format!("{}%", username))
+        match sqlx::query_as::<_, User>("SELECT id, email, username, hashed_password, is_admin FROM tblUsers WHERE username = $1").bind(format!("{}", username))
             .fetch_all(pool)
-            .await
-            .unwrap();
-    
-    let mut return_data = String::new();
+            .await {
+                Ok(v) => v,
+                Err(e) => return Err(e.to_string()),
+            };
 
-    for i in data {
-        return_data.push_str(&(format!("UserID: {} \n email: {} \n username: {} \n hashed_password: {}\n is_admin: {}\n\n", i.id, i.email, i.username, i.hashed_password, i.is_admin)));
-    }
+    return Ok(data);
+}
 
-    println!("{}", return_data);
-    return return_data;
+async fn get_user_from_email(pool: &SqlitePool, email: &str) -> Result<Vec<User>, String> {
+    let data: Vec<User> = 
+        match sqlx::query_as::<_, User>("SELECT id, email, username, hashed_password, is_admin FROM tblUsers WHERE email = $1")
+        .bind(email).fetch_all(pool).await {
+            Ok(v) => v,
+            Err(e) => return Err(e.to_string()),
+        };
+
+    return Ok(data);
 }
 
 pub async fn upload_embedding(pool: &SqlitePool, embedding: Vec<f32>) -> String {
