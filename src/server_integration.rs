@@ -6,26 +6,9 @@ use axum::extract::{Json, State};
 
 use tokio::sync::mpsc;
 
-use serde::Deserialize;
-
 use super::{db_integration, embedding_integration, llm_integration};
 
-#[derive(Clone)]
-struct AppState {
-    pool: SqlitePool,
-}
-
-#[derive(Deserialize)]
-struct NewUser {
-    username: String,
-    email: String,
-    hashed_password: String,
-}
-
-#[derive(Deserialize)]
-struct UserSearch {
-    username: String,
-}
+use super::structs::{AppState, NewUser, Prompt, SimilarityPrompts};
 
 pub async fn spawn_server(mut rx: mpsc::Receiver<SqlitePool>) {
     let pool = rx.recv().await.unwrap();
@@ -82,14 +65,18 @@ async fn login_user(State(pool_state): State<AppState>, Json(payload): Json<NewU
     };
 }
 
-async fn get_similar_chats(State(pool_state): State<AppState>) -> String {
-     println!("{:?}", db_integration::get_embeddings(&pool_state.pool).await);
-     return "Success".to_string();
-}
+async fn get_similar_chats(State(pool_state): State<AppState>, Json(payload): Json<Prompt>) -> String {
+    let embedded_prompt = match embedding_integration::get_embedding(payload.prompt).await  {
+        Ok(v) => v,
+        Err(e) => return e,
+    };
+    
+    let return_data = match db_integration::get_similar_messages(&pool_state.pool, embedded_prompt).await {
+        Ok(s) => s,
+        Err(e) => return e,
+     };
 
-#[derive(Deserialize)]
-struct Prompt {
-    prompt: String
+     return "in progress".to_string();
 }
 
 // async fn upload_embedding(Json(payload): Json<Prompt>) -> String {
@@ -107,12 +94,6 @@ async fn continue_chat(State(pool_state): State<AppState>, Json(payload): Json<P
     return "In Progress".to_string();
 }
 
-#[derive(Deserialize)]
-struct SimilarityPrompts {
-    prompt1: String,
-    prompt2: String,
-}
-
 async fn test_similarity(Json(payload): Json<SimilarityPrompts>) -> String {
     let embedding1 = match embedding_integration::get_embedding(payload.prompt1).await {
         Ok(v) => v,
@@ -123,6 +104,8 @@ async fn test_similarity(Json(payload): Json<SimilarityPrompts>) -> String {
         Ok(v) => v,
         Err(e) => return e,
     };
+
+    println!("{:?}", embedding1);
     
     return embedding_integration::calculate_similarity(&embedding1, &embedding2).to_string();
 }

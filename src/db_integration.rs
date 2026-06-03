@@ -1,6 +1,9 @@
 pub use sqlx::{sqlite::SqlitePool, FromRow};
+use super::embedding_integration;
 
 use tokio::sync::mpsc;
+
+use super::structs::{User, Message, MessageWithScore, MessageReturnData};
 
 pub async fn get_pool(tx: mpsc::Sender<SqlitePool>) {
     let pool = SqlitePool::connect("sqlite:./data/db.sqlite")
@@ -123,15 +126,6 @@ async fn login_user_with_email(pool: &SqlitePool, email: String, hashed_password
     return check_user_password(&users, hashed_password);
 }
 
-#[derive(Debug, sqlx::FromRow)]
-struct User {
-    id: i32,
-    email: String,
-    username: String,
-    hashed_password: String,
-    is_admin: bool,
-}
-
 async fn get_user_from_username(pool: &SqlitePool, username: &str) -> Result<Vec<User>, String> {
     let data: Vec<User> =
         match sqlx::query_as::<_, User>("SELECT id, email, username, hashed_password, is_admin FROM tblUsers WHERE username = $1").bind(format!("{}", username))
@@ -155,7 +149,7 @@ async fn get_user_from_email(pool: &SqlitePool, email: &str) -> Result<Vec<User>
     return Ok(data);
 }
 
-pub async fn upload_embedding(pool: &SqlitePool, embedding: Vec<f32>) -> String {
+async fn upload_embedding(pool: &SqlitePool, embedding: Vec<f32>) -> String {
     println!("uploading embedding!");
 
     let blob = vec_to_blob(&embedding);
@@ -173,21 +167,53 @@ pub async fn upload_embedding(pool: &SqlitePool, embedding: Vec<f32>) -> String 
     return return_data;
 }
 
-#[derive(FromRow)]
-struct EmbeddingReturnData {
-    embedding: Vec<u8>,
+pub async fn get_similar_messages(pool: &SqlitePool, embedded_prompt: Vec<f32>) -> Result<String, String> {
+    let messages = match get_messages(pool).await {
+        Ok(v) => v,
+        Err(e) => return Err(format!("Failed to fetch embeddings from db. Failed with: \n{}", e)),
+    };
+
+    let mut similar_messages: Vec<MessageWithScore> = Vec::new();
+
+    for message in messages {
+        let score = embedding_integration::calculate_similarity(&message.embedding, &embedded_prompt);
+
+        if score > 0.6 {
+            similar_messages.push(MessageWithScore {
+                id: message.id,
+                contents: message.contents,
+                chat_id: message.chat_id,
+                position: message.position,
+                embedding: message.embedding,
+                score,
+            });
+        }
+    }
+
+    return Ok("In Progress".to_string());
 }
 
-pub async fn get_embeddings(pool: &SqlitePool) -> Vec<Vec<f32>> {
-    let data: Vec<EmbeddingReturnData> = sqlx::query_as::<_, EmbeddingReturnData>("SELECT embedding FROM tblEmbeddings;").fetch_all(pool).await.unwrap();
+
+
+async fn get_messages(pool: &SqlitePool) -> Result<Vec<Message>, String> {
+    let data: Vec<MessageReturnData> = match sqlx::query_as::<_, MessageReturnData>("SELECT id, contents, chat_id, position, embedding FROM tblEmbeddings;").fetch_all(pool).await {
+        Ok(v) => v,
+        Err(e) => return Err(format!("Failed to get embeddings from db. Failed with: \n {}", e)),
+    };
 
     let mut return_data = Vec::new();
 
-    for embedding in data {
-        return_data.push(blob_to_vec(&embedding.embedding));
+    for message in data {
+        return_data.push(Message {
+            id: message.id,
+            contents: message.contents,
+            chat_id: message.chat_id,
+            position: message.position,
+            embedding: blob_to_vec(&message.embedding),
+        });
     }
 
-    return return_data;
+    return Ok(return_data);
 }
 
 fn handle_db_error(err_code: &str) -> String {
