@@ -71,3 +71,9 @@ pub struct SimilarityPrompts {
     pub prompt1: String,
     pub prompt2: String,
 }
+
+// Algorithms
+pub struct PasswordPair {
+    pub hashed_password: String,
+    pub salt: Vec<u8>,
+}

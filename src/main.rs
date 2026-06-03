@@ -3,6 +3,7 @@ mod server_integration;
 mod embedding_integration;
 mod llm_integration;
 mod structs;
+mod algorithms;
 
 use futures::executor;
 use tokio::task;

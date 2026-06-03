@@ -3,7 +3,9 @@ use super::embedding_integration;
 
 use tokio::sync::mpsc;
 
-use super::structs::{User, Message, MessageWithScore, MessageReturnData};
+use super::structs::{User, Message, MessageWithScore, MessageReturnData, PasswordPair};
+
+use super::algorithms;
 
 pub async fn get_pool(tx: mpsc::Sender<SqlitePool>) {
     let pool = SqlitePool::connect("sqlite:./data/db.sqlite")
@@ -63,9 +65,14 @@ pub async fn register_user(pool: &SqlitePool, username: String, email: String, h
     return upload_user(pool, username, email, hashed_password).await;
 }
 
-async fn upload_user(pool: &SqlitePool, username: String, email: String, hashed_password: String) -> Result<String, String> {
+async fn upload_user(pool: &SqlitePool, username: String, email: String, password: String) -> Result<String, String> {
+    let password_pair = match algorithms::hash_password(password) {
+        Ok(p) => p,
+        Err(e) => return Err(format!("Couldn't hash password. failed with:\n{}", e)),
+    };
+    
     println!("Uploading User");
-    let return_data = match sqlx::query("INSERT INTO tblUsers (email, username, hashed_password) VALUES ($1, $2, $3)").bind(email).bind(username).bind(hashed_password).execute(pool).await {
+    let return_data = match sqlx::query("INSERT INTO tblUsers (email, username, hashed_password, salt) VALUES ($1, $2, $3, $4)").bind(email).bind(username).bind(password_pair.hashed_password).bind(password_pair.salt).execute(pool).await {
         Ok(_) => "User Uploaded".to_string(),
         Err(err) => match err {
             sqlx::Error::Database(err) => {
