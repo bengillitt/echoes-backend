@@ -8,9 +8,9 @@ pub fn hash_password(password: String) -> Result<PasswordPair, String> {
 
     let password_hash = argon2.hash_password(password.as_bytes(), &salt).unwrap();
 
-    let mut saltBytes = Vec::new();
+    let mut saltBytes = Vec::from(salt.as_str().as_bytes());
 
-    salt.decode_b64(&mut saltBytes);
+    // salt.decode_b64(&mut saltBytes);
 
     return Ok(PasswordPair {
         hashed_password: password_hash.to_string(),

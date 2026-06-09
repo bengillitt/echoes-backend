@@ -87,25 +87,30 @@ async fn upload_user(pool: &SqlitePool, username: String, email: String, passwor
     // Handle errors better to avoid crashes (crashes would still allow the server to load, return a 200 OK, but nothing would occur)
 }
 
-pub async fn login_user(pool: &SqlitePool, username: String, email: String, hashed_password: String) -> Result<String, String> {
+pub async fn login_user(pool: &SqlitePool, username: String, email: String, password: String) -> Result<String, String> {
     if username == "".to_string() && email == "".to_string() {
         return Err("Must provide a username or email.".to_string());
     }
 
     if username != "".to_string() {
-        return login_user_with_username(pool, username, hashed_password).await;
+        return login_user_with_username(pool, username, password).await;
     } else {
-        return login_user_with_email(pool, email, hashed_password).await;
+        return login_user_with_email(pool, email, password).await;
     }
 }
 
-fn check_user_password(users: &Vec<User>, hashed_password: String) -> Result<String, String> {
+fn check_user_password(users: &Vec<User>, password: String) -> Result<String, String> {
     if users.len() == 0 {
         return Err(format!("Incorrect Credentials"));
     }
     
     if users.len() == 1 {
-        if users[0].hashed_password == hashed_password {
+        let hashed_password = match algorithms::hash_password_with_salt(password, users[0].salt.clone()) {
+            Ok(v) => v.hashed_password,
+            Err(_) => return Err("Can't hash password".to_string()),
+        };
+
+        if users[0].hashed_password ==  hashed_password{
             return Ok("Login Successful".to_string());
         } else {
             return Err(format!("Incorrect Credentials"));
@@ -135,7 +140,7 @@ async fn login_user_with_email(pool: &SqlitePool, email: String, hashed_password
 
 async fn get_user_from_username(pool: &SqlitePool, username: &str) -> Result<Vec<User>, String> {
     let data: Vec<User> =
-        match sqlx::query_as::<_, User>("SELECT id, email, username, hashed_password, is_admin FROM tblUsers WHERE username = $1").bind(format!("{}", username))
+        match sqlx::query_as::<_, User>("SELECT id, email, username, hashed_password, salt, is_admin FROM tblUsers WHERE username = $1").bind(format!("{}", username))
             .fetch_all(pool)
             .await {
                 Ok(v) => v,
@@ -147,7 +152,7 @@ async fn get_user_from_username(pool: &SqlitePool, username: &str) -> Result<Vec
 
 async fn get_user_from_email(pool: &SqlitePool, email: &str) -> Result<Vec<User>, String> {
     let data: Vec<User> = 
-        match sqlx::query_as::<_, User>("SELECT id, email, username, hashed_password, is_admin FROM tblUsers WHERE email = $1")
+        match sqlx::query_as::<_, User>("SELECT id, email, username, hashed_password, salt, is_admin FROM tblUsers WHERE email = $1")
         .bind(format!("{}", email)).fetch_all(pool).await {
             Ok(v) => v,
             Err(e) => return Err(e.to_string()),

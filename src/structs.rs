@@ -40,6 +40,7 @@ pub struct User {
     pub email: String,
     pub username: String,
     pub hashed_password: String,
+    pub salt: Vec<u8>,
     pub is_admin: bool,
 }
 
