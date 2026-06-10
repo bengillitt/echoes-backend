@@ -52,14 +52,14 @@ pub async fn spawn_server(mut rx: mpsc::Receiver<SqlitePool>) {
 }
 
 async fn register_user(State(pool_state): State<AppState>, Json(payload): Json<NewUser>) -> String {
-    return match db_integration::register_user(&pool_state.pool, payload.username, payload.email, payload.hashed_password).await {
+    return match db_integration::register_user(&pool_state.pool, payload.username, payload.email, payload.password).await {
         Ok(s) => s,
         Err(e) => format!("An error occured \n {}", e),
     };
 }
 
 async fn login_user(State(pool_state): State<AppState>, Json(payload): Json<NewUser>) -> String {
-    return match db_integration::login_user(&pool_state.pool, payload.username, payload.email, payload.hashed_password).await {
+    return match db_integration::login_user(&pool_state.pool, payload.username, payload.email, payload.password).await {
         Ok(s) => s,
         Err(e) => format!("An error occured Failed with: \n {}", e),
     };
