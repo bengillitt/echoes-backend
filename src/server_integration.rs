@@ -16,7 +16,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::{db_integration, embedding_integration, llm_integration};
 
-use super::structs::{AppState, UserInput, Prompt, SimilarityPrompts, MessageWithScore, Claims, ContinueChatInput};
+use super::structs::{AppState, UserInput, Prompt, SimilarityPrompts, MessageWithScore, Claims, ContinueChatInput, ChatInteractionInput};
 
 use dotenv::dotenv;
 
@@ -49,15 +49,11 @@ pub async fn spawn_server(mut rx: mpsc::Receiver<SqlitePool>) {
             get(|| async {}).post(continue_chat),
         ).route(
             "/getChat", // In Progress
-            get(|| async {}).post(lookup_chats)
+            get(|| async {}).post(lookup_chat)
         ).route(
             "/chatInteraction", // In Progress
             get(|| async {}).post(chat_interaction)
-        ).route(
-            "/testSimilarity", // Will remove later
-            get(|| async {}).post(test_similarity)
-        )
-        .with_state(state);
+        ).with_state(state);
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
     axum::serve(listener, app).await.unwrap();
@@ -148,43 +144,52 @@ async fn get_similar_chats(State(pool_state): State<AppState>, Json(payload): Js
 //     };
 // }
 
-async fn create_new_chat(State(pool_state): State<AppState>, Json(payload): Json<Prompt>) -> String { // Need to first figure out how tokens work to get and keep user data
-    return match db_integration::upload_and_return_chat(&pool_state.pool, payload.prompt, payload.token).await {
+async fn create_new_chat(State(pool_state): State<AppState>, Json(payload): Json<Prompt>) -> Response { // Need to first figure out how tokens work to get and keep user data
+    let body =  match db_integration::upload_and_return_chat(&pool_state.pool, payload.prompt, payload.token).await {
         Ok(s) => s,
         Err(e) => format!("An error occurred: \n {}", e),
     };
+
+    return (StatusCode::OK, Json(body)).into_response();
 }
 
-async fn continue_chat(State(pool_state): State<AppState>, Json(payload): Json<ContinueChatInput>) -> String {
-    return match db_integration::continue_chat(&pool_state.pool, payload.chat_id, payload.prompt, payload.token).await {
+async fn continue_chat(State(pool_state): State<AppState>, Json(payload): Json<ContinueChatInput>) -> Response {
+    let body = match db_integration::continue_chat(&pool_state.pool, payload.chat_id, payload.prompt, payload.token).await {
         Ok(s) => s,
         Err(e) => format!("An error occurred: \n {}", e),
     };
+
+    return (StatusCode::OK, Json(body)).into_response();
 }
 
-async fn test_similarity(Json(payload): Json<SimilarityPrompts>) -> String {
-    let embedding1 = match embedding_integration::get_embedding(payload.prompt1).await {
-        Ok(v) => v,
-        Err(e) => return e,
-    };
+// async fn test_similarity(Json(payload): Json<SimilarityPrompts>) -> String {
+//     let embedding1 = match embedding_integration::get_embedding(payload.prompt1).await {
+//         Ok(v) => v,
+//         Err(e) => return e,
+//     };
     
-    let embedding2 = match embedding_integration::get_embedding(payload.prompt2).await {
-        Ok(v) => v,
-        Err(e) => return e,
+//     let embedding2 = match embedding_integration::get_embedding(payload.prompt2).await {
+//         Ok(v) => v,
+//         Err(e) => return e,
+//     };
+
+//     println!("{:?}", embedding1);
+    
+//     return match embedding_integration::calculate_similarity(&embedding1, &embedding2) {
+//         Ok(s) => s.to_string(),
+//         Err(e) => e,
+//     };
+// }
+
+async fn chat_interaction(State(pool_state): State<AppState>, Json(payload): Json<ChatInteractionInput>) -> Response {
+    let body = match db_integration::chat_interaction(&pool_state.pool, payload.chat_id, payload.interaction, payload.token).await {
+        Ok(s) => s,
+        Err(e) => format!("An error occurred: \n {}", e),
     };
 
-    println!("{:?}", embedding1);
-    
-    return match embedding_integration::calculate_similarity(&embedding1, &embedding2) {
-        Ok(s) => s.to_string(),
-        Err(e) => e,
-    };
+    return (StatusCode::OK, Json(body)).into_response();
 }
 
-async fn lookup_chats(State(pool_state): State<AppState>) -> String {
-    return "In Progress".to_string();
-} 
-
-async fn chat_interaction(State(pool_state): State<AppState>) -> String {
+async fn lookup_chat(State(pool_state): State<AppState>) -> String {
     return "In Progress".to_string();
 }

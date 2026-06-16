@@ -63,6 +63,11 @@ pub struct UserId {
 }
 
 #[derive(FromRow)]
+pub struct Feedback {
+    pub user_id: i32,
+}
+
+#[derive(FromRow)]
 pub struct ContinuationChat {
     pub continuation_chat_id: Option<i32>,
 }
@@ -104,6 +109,13 @@ pub struct SimilarityPrompts {
 pub struct ContinueChatInput {
     pub chat_id: i32,
     pub prompt: String,
+    pub token: String,
+}
+
+#[derive(Deserialize)]
+pub struct ChatInteractionInput {
+    pub chat_id: i32,
+    pub interaction: i32, // 1 = like, 0 = dislike
     pub token: String,
 }
 
