@@ -238,7 +238,9 @@ async fn create_new_chat(
     .await
     {
         Ok(s) => s,
-        Err(e) => format!("An error occurred: \n {}", e),
+        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({
+            "error": e
+        }))).into_response(),
     };
 
     return (StatusCode::OK, Json(body)).into_response();
@@ -257,7 +259,7 @@ async fn continue_chat(
     .await
     {
         Ok(s) => s,
-        Err(e) => format!("An error occurred: \n {}", e),
+        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e}))).into_response(),
     };
 
     return (StatusCode::OK, Json(body)).into_response();
@@ -295,7 +297,7 @@ async fn chat_interaction(
     .await
     {
         Ok(s) => s,
-        Err(e) => format!("An error occurred: \n {}", e),
+        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e}))).into_response(),
     };
 
     return (StatusCode::OK, Json(body)).into_response();
