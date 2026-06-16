@@ -145,7 +145,7 @@ async fn get_similar_chats(State(pool_state): State<AppState>, Json(payload): Js
 // }
 
 async fn create_new_chat(State(pool_state): State<AppState>, Json(payload): Json<Prompt>) -> String { // Need to first figure out how tokens work to get and keep user data
-    return match db_integration::upload_and_return_chat(&pool_state.pool, payload.prompt).await {
+    return match db_integration::upload_and_return_chat(&pool_state.pool, payload.prompt, payload.token).await {
         Ok(s) => s,
         Err(e) => format!("An error occurred: \n {}", e),
     };

@@ -61,7 +61,8 @@ pub struct ID {
 // ----------------
 #[derive(Deserialize)]
 pub struct Prompt {
-    pub prompt: String
+    pub prompt: String,
+    pub token: String,
 }
 
 #[derive(Clone)]
@@ -85,6 +86,7 @@ pub struct UserSearch {
 pub struct SimilarityPrompts {
     pub prompt1: String,
     pub prompt2: String,
+    pub token: String,
 }
 
 #[derive(Serialize, Deserialize)]

@@ -1,6 +1,10 @@
 use argon2::{Argon2, PasswordHasher, password_hash::{SaltString, rand_core::OsRng}};
 
-use super::structs::{PasswordPair, MessageWithScore};
+use super::structs::{PasswordPair, MessageWithScore, Claims};
+
+use jsonwebtoken::{decode, DecodingKey, Validation, Algorithm};
+
+use dotenv::dotenv;
 
 // -----------------
 // Hashing Functions
@@ -80,4 +84,25 @@ fn merge_messages(left: Vec<MessageWithScore>, right: Vec<MessageWithScore>) -> 
      }
 
      return merged;
+}
+
+
+// -----------------
+// JWT Functions
+// -----------------
+
+pub fn verify_token(token_string: &str) -> Result<i32, jsonwebtoken::errors::Error> {
+    dotenv().ok();
+
+    let secret = std::env::var("JWT_SECRET").expect("JWT_SECRET must be set in .env file");
+
+    let validation = Validation::new(Algorithm::HS256);
+
+    let token_data = decode::<Claims>(
+        token_string,
+        &DecodingKey::from_secret(secret.as_bytes()),
+        &validation,
+    )?;
+
+    Ok(token_data.claims.sub.parse::<i32>().unwrap())
 }

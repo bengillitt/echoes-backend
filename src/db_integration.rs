@@ -162,6 +162,17 @@ async fn get_user_from_email(pool: &SqlitePool, email: &str) -> Result<Vec<User>
     return Ok(data);
 }
 
+async fn get_user_from_id(pool: &SqlitePool, id: i32) -> Result<Vec<User>, String> {
+    let data: Vec<User> = 
+        match sqlx::query_as::<_, User>("SELECT id, email, username, hashed_password, salt, is_admin FROM tblUsers WHERE id = $1")
+        .bind(id).fetch_all(pool).await {
+            Ok(v) => v,
+            Err(e) => return Err(e.to_string()),
+        };
+
+    return Ok(data);
+}
+
 async fn upload_embedding(pool: &SqlitePool, embedding: Vec<f32>) -> Result<String, String> {
     println!("uploading embedding!");
 
@@ -174,25 +185,77 @@ async fn upload_embedding(pool: &SqlitePool, embedding: Vec<f32>) -> Result<Stri
     return Ok(return_data);
 }
 
-async fn create_new_chat_record(pool: &SqlitePool, response: String) -> Result<(), String> {
-    let new_chat_id = match sqlx::query_as::<_, ID>("INSERT INTO tblChats (response) VALUES ($1) RETURNING id;").bind(response).fetch_one(pool).await{
+async fn create_new_chat_record(pool: &SqlitePool, user_id: i32) -> Result<i32, String> { 
+    let new_chat_id = match sqlx::query_as::<_, ID>("INSERT INTO tblChats (user_id) VALUES ($1) RETURNING id;").bind(user_id).fetch_one(pool).await{
         Ok(v) => v,
         Err(e) => return Err(format!("Failed to create new chat record. Failed with: \n {}", e.to_string())),
     }.id;
 
-    // let return_data = match sqlx::query("INSERT INTO tblMessages ()")
-    
-
-    return Ok(());
+    return Ok((new_chat_id));
 }
 
-pub async fn upload_and_return_chat(pool: &SqlitePool, prompt: String) -> Result<String, String> {
-    let response = match llm_integration::upload_to_llm(prompt).await {
+async fn create_new_message_with_embedding(pool: &SqlitePool, chat_id: i32, contents: String, position: i32, message_role: i32, embedding: Vec<f32>) -> Result<i32, String> {
+    let blob = vec_to_blob(&embedding);
+    let new_message_id = match sqlx::query_as::<_, ID>("INSERT INTO tblMessages (chat_id, contents, position, message_role, embedding) VALUES ($1, $2, $3, $4, $5) RETURNING id;").bind(chat_id).bind(contents).bind(position).bind(message_role).bind(blob).fetch_one(pool).await {
+        Ok(v) => v,
+        Err(e) => return Err(format!("Failed to create new message record. Failed with: \n {}", e.to_string())),
+    }.id;
+
+    return Ok(new_message_id);
+}
+
+async fn create_new_message_without_embedding(pool: &SqlitePool, chat_id: i32, contents: String, position: i32, message_role: i32) -> Result<i32, String> {
+    let new_message_id = match sqlx::query_as::<_, ID>("INSERT INTO tblMessages (chat_id, contents, position, message_role) VALUES ($1, $2, $3, $4) RETURNING id;").bind(chat_id).bind(contents).bind(position).bind(message_role).fetch_one(pool).await {
+        Ok(v) => v,
+        Err(e) => return Err(format!("Failed to create new message record. Failed with: \n {}", e.to_string())),
+    }.id;
+
+    return Ok(new_message_id);
+}
+
+async fn create_new_message_record(pool: &SqlitePool, chat_id: i32, contents: String, position: i32, message_role: i32, embedding: Option<Vec<f32>>) -> Result<i32, String> {
+    return Ok(match embedding {
+        Some(v) => create_new_message_with_embedding(pool, chat_id, contents, position, message_role, v).await?,
+        None => create_new_message_without_embedding(pool, chat_id, contents, position, message_role).await?,
+    });
+}
+
+pub async fn upload_and_return_chat(pool: &SqlitePool, prompt: String, token: String) -> Result<String, String> {
+    let user_id = match check_token(token) {
+        Ok(v) => v,
+        Err(e) => return Err(format!("Failed to verify token. Failed with: \n {}", e)),
+    };
+
+    let user_data = get_user_from_id(pool, user_id).await?; // Check if user exists
+
+    if (user_data.len() < 1 && user_data.len() > 1) {
+        return Err("User not found or multiple users found. Contact support".to_string());
+    }
+    
+    let response = match llm_integration::upload_to_llm(prompt.clone()).await {
         Ok(v) => v,
         Err(e) => return Err(format!("Failed to upload to llm. Failed with: \n {}", e)),
     };
 
+    let chat_id = match create_new_chat_record(pool, user_id).await {
+        Ok(v) => v,
+        Err(e) => return Err(format!("Failed to create new chat record. Failed with: \n {}", e)),
+    };
 
+    let embedding = match embedding_integration::get_embedding(prompt.clone()).await {
+        Ok(v) => v,
+        Err(e) => return Err(format!("Failed to get embedding. Failed with: \n {}", e)),
+    };
+
+    let message_id = match create_new_message_record(pool, chat_id, prompt, 0, 0, Some(embedding)).await {
+        Ok(v) => v,
+        Err(e) => return Err(format!("Failed to create new message record. Failed with: \n {}", e)),
+    };
+
+    let message_id = match create_new_message_record(pool, chat_id, response.clone(), 1, 1, None).await {
+        Ok(v) => v,
+        Err(e) => return Err(format!("Failed to create new message record. Failed with: \n {}", e)),
+    };
 
     return Ok(response);
 }
@@ -261,6 +324,13 @@ async fn get_messages(pool: &SqlitePool) -> Result<Vec<Message>, String> {
 //         _ => panic!("db error: Err Code: {}", err_code),
 //     }
 // }
+
+fn check_token(token: String) -> Result<i32, String> {
+    return match algorithms::verify_token(&token[..]) {
+        Ok(v) => Ok(v),
+        Err(e) => Err(format!("Token verification failed. Failed with: \n {}", e)),
+    };
+}
 
 fn vec_to_blob(v: &[f32]) -> Vec<u8> {
     v.iter().flat_map(|x| x.to_le_bytes()).collect()
