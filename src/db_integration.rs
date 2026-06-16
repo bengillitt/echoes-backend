@@ -112,7 +112,7 @@ fn check_user_password(users: &Vec<User>, password: String) -> Result<String, St
         };
 
         if users[0].hashed_password ==  hashed_password{
-            return Ok("Login Successful".to_string());
+            return Ok(users[0].id.to_string());
         } else {
             return Err(format!("Incorrect Credentials"));
         }

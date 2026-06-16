@@ -82,14 +82,31 @@ async fn register_user(State(pool_state): State<AppState>, Json(payload): Json<U
         Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, format!("Token generation failed \n {}", e)).into_response(),
     };
 
-    return (StatusCode::OK, token).into_response();
+    return (StatusCode::OK, token).into_response(); // TODO return token as a cookie
 }
 
-async fn login_user(State(pool_state): State<AppState>, Json(payload): Json<UserInput>) -> String {
-    return match db_integration::login_user(&pool_state.pool, payload.username, payload.email, payload.password).await {
+async fn login_user(State(pool_state): State<AppState>, Json(payload): Json<UserInput>) -> Response {
+    dotenv().ok();
+    let secret = std::env::var("JWT_SECRET").expect("JWT_SECRET must be set in .env file");
+
+    let current_time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+
+    let userId = match db_integration::login_user(&pool_state.pool, payload.username, payload.email, payload.password).await {
         Ok(s) => s,
-        Err(e) => format!("An error occured Failed with: \n {}", e),
+        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, format!("An error occured Failed with: \n {}", e)).into_response(),
     };
+
+    let claims = Claims {
+        sub: userId.to_string(),
+        exp: (current_time + 60 * 60) as usize, // Token expires in 1 hour
+    };
+
+    let token = match encode(&Header::default(), &claims, &EncodingKey::from_secret(secret.as_ref())) {
+        Ok(t) => t,
+        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, format!("Token generation failed \n {}", e)).into_response(),
+    };
+    
+    return (StatusCode::OK, token).into_response(); // TODO return token as a cookie
 }
 
 async fn get_similar_chats(State(pool_state): State<AppState>, Json(payload): Json<Prompt>) -> Json<Vec<MessageWithScore>> {
