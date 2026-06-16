@@ -33,28 +33,28 @@ pub async fn spawn_server(mut rx: mpsc::Receiver<SqlitePool>) {
             get(|| async { "Get Echoes" }).post(|| async { "Post Echoes" }),
         )
         .route(
-            "/register",
+            "/register", // Done
             get(|| async {}).post(register_user),
         ).route(
-            "/login",
+            "/login", // Done
             get(|| async {}).post(login_user),
         ).route(
-            "/getSimilarChats",
+            "/getSimilarChats", // Done
             get(|| async {}).post(get_similar_chats),
         ).route(
-            "/createNewChat",
+            "/createNewChat", // Done
             get(|| async {}).post(create_new_chat),
         ).route(
-            "/continueChat",
+            "/continueChat", // In Progress
             get(|| async {}).post(continue_chat),
         ).route(
-            "/lookupChats",
+            "/getChat", // In Progress
             get(|| async {}).post(lookup_chats)
         ).route(
-            "/chatInteraction",
+            "/chatInteraction", // In Progress
             get(|| async {}).post(chat_interaction)
         ).route(
-            "/testSimilarity",
+            "/testSimilarity", // Will remove later
             get(|| async {}).post(test_similarity)
         )
         .with_state(state);
@@ -123,22 +123,22 @@ async fn login_user(State(pool_state): State<AppState>, Json(payload): Json<User
     return (StatusCode::OK, [(header::SET_COOKIE, cookie)], body).into_response();
 }
 
-async fn get_similar_chats(State(pool_state): State<AppState>, Json(payload): Json<Prompt>) -> Json<Vec<MessageWithScore>> {
+async fn get_similar_chats(State(pool_state): State<AppState>, Json(payload): Json<Prompt>) -> Response {
     let embedded_prompt = match embedding_integration::get_embedding(payload.prompt).await  {
         Ok(v) => v,
         Err(e) => {
             eprintln!("Error occurred while fetching embedding: {}", e);
-            return Json(vec![])},
+            return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": e }))).into_response()},
     };
     
     let return_data = match db_integration::get_similar_messages(&pool_state.pool, embedded_prompt).await {
         Ok(s) => s,
         Err(e) => {
             eprintln!("Error occurred while fetching similar messages: {}", e);
-            return Json(vec![])},
+            return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": e }))).into_response()},
      };
 
-     return Json(return_data);
+     return (StatusCode::OK, Json(return_data)).into_response();
 }
 
 // async fn upload_embedding(Json(payload): Json<Prompt>) -> String {
