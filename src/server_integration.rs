@@ -35,6 +35,10 @@ pub async fn spawn_server(mut rx: mpsc::Receiver<SqlitePool>) {
             get(|| async { "Get Echoes" }).post(|| async { "Post Echoes" }),
         )
         .route(
+            "/me",
+            get(|| async {}).post(get_user),
+        )
+        .route(
             "/register", // Done
             get(|| async {}).post(register_user),
         )
@@ -303,6 +307,10 @@ async fn chat_interaction(
     return (StatusCode::OK, Json(body)).into_response();
 }
 
-async fn lookup_chat(State(pool_state): State<AppState>) -> String {
-    return "In Progress".to_string();
+async fn lookup_chat(State(pool_state): State<AppState>) -> Response {
+    return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": "In Progress!"}))).into_response();
+}
+
+async fn get_user(State(pool_state): State<AppState>) -> Response {
+    return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": "In Progress!"}))).into_response();
 }
