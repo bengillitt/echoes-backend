@@ -7,7 +7,7 @@ use async_recursion::async_recursion;
 use tokio::sync::mpsc;
 
 use super::structs::{
-    ContinuationChat, ID, Message, MessageReturnData, MessageWithScore, PasswordPair, User, UserId, Feedback
+    ContinuationChat, ID, Message, MessageReturnData, MessageWithScore, User, UserId,
 };
 
 use super::algorithms;
@@ -188,8 +188,7 @@ async fn get_user_from_username(pool: &SqlitePool, username: &str) -> Result<Vec
 }
 
 async fn get_user_from_email(pool: &SqlitePool, email: &str) -> Result<Vec<User>, String> {
-    let data: Vec<User> = 
-        match sqlx::query_as::<_, User>("SELECT id, email, username, hashed_password, salt, is_admin FROM tblUsers WHERE email = $1")
+    let data: Vec<User> = match sqlx::query_as::<_, User>("SELECT id, email, username, hashed_password, salt, is_admin FROM tblUsers WHERE email = $1")
         .bind(format!("{}", email)).fetch_all(pool).await {
             Ok(v) => v,
             Err(e) => return Err(e.to_string()),
@@ -213,33 +212,33 @@ async fn get_user_from_id(pool: &SqlitePool, id: i32) -> Result<Vec<User>, Strin
     return Ok(data);
 }
 
-async fn upload_embedding(pool: &SqlitePool, embedding: Vec<f32>) -> Result<String, String> {
-    println!("uploading embedding!");
+// async fn upload_embedding(pool: &SqlitePool, embedding: Vec<f32>) -> Result<String, String> {
+//     println!("uploading embedding!");
 
-    let blob = vec_to_blob(&embedding);
-    let return_data = match sqlx::query("INSERT INTO tblEmbeddings (embedding) VALUES ($1);")
-        .bind(blob)
-        .execute(pool)
-        .await
-    {
-        Ok(_) => "Uploaded Embedding".to_string(),
-        Err(err) => {
-            return Err(format!(
-                "Failed to upload embedding. Failed with: \n {}",
-                err.to_string()
-            ));
-        }
-    };
+//     let blob = vec_to_blob(&embedding);
+//     let return_data = match sqlx::query("INSERT INTO tblEmbeddings (embedding) VALUES ($1);")
+//         .bind(blob)
+//         .execute(pool)
+//         .await
+//     {
+//         Ok(_) => "Uploaded Embedding".to_string(),
+//         Err(err) => {
+//             return Err(format!(
+//                 "Failed to upload embedding. Failed with: \n {}",
+//                 err.to_string()
+//             ));
+//         }
+//     };
 
-    return Ok(return_data);
-}
+//     return Ok(return_data);
+// }
 
 async fn create_new_chat_record(
     pool: &SqlitePool,
     user_id: i32,
     continue_chat_id: Option<i32>,
 ) -> Result<i32, String> {
-    if (continue_chat_id.is_some()) {
+    if continue_chat_id.is_some() {
         let new_chat_id = match sqlx::query_as::<_, ID>(
             "INSERT INTO tblChats (user_id, continuation_chat_id) VALUES ($1, $2) RETURNING id;",
         )
@@ -277,7 +276,7 @@ async fn create_new_chat_record(
         }
         .id;
 
-    return Ok((new_chat_id));
+    return Ok(new_chat_id);
 }
 
 async fn create_new_message_with_embedding(
@@ -344,7 +343,7 @@ pub async fn upload_and_return_chat(
 
     let user_data = get_user_from_id(pool, user_id).await?; // Check if user exists
 
-    if (user_data.len() < 1 && user_data.len() > 1) {
+    if user_data.len() < 1 && user_data.len() > 1 {
         return Err("User not found or multiple users found. Contact support".to_string());
     }
 
@@ -368,27 +367,25 @@ pub async fn upload_and_return_chat(
         Err(e) => return Err(format!("Failed to get embedding. Failed with: \n {}", e)),
     };
 
-    let message_id =
-        match create_new_message_record(pool, chat_id, prompt, 0, 0, Some(embedding)).await {
-            Ok(v) => v,
-            Err(e) => {
-                return Err(format!(
-                    "Failed to create new message record. Failed with: \n {}",
-                    e
-                ));
-            }
-        };
+    match create_new_message_record(pool, chat_id, prompt, 0, 0, Some(embedding)).await {
+        Ok(v) => v,
+        Err(e) => {
+            return Err(format!(
+                "Failed to create new message record. Failed with: \n {}",
+                e
+            ));
+        }
+    };
 
-    let message_id =
-        match create_new_message_record(pool, chat_id, response.clone(), 1, 1, None).await {
-            Ok(v) => v,
-            Err(e) => {
-                return Err(format!(
-                    "Failed to create new message record. Failed with: \n {}",
-                    e
-                ));
-            }
-        };
+    match create_new_message_record(pool, chat_id, response.clone(), 1, 1, None).await {
+        Ok(v) => v,
+        Err(e) => {
+            return Err(format!(
+                "Failed to create new message record. Failed with: \n {}",
+                e
+            ));
+        }
+    };
 
     return Ok(response);
 }
@@ -427,7 +424,7 @@ async fn get_context(pool: &SqlitePool, chat_id: i32) -> Result<String, String> 
         }
     };
 
-    if (chat_data.continuation_chat_id.is_some()) {
+    if chat_data.continuation_chat_id.is_some() {
         let continuation_chat_id = chat_data.continuation_chat_id.unwrap();
 
         let continuation_context = match get_context(pool, continuation_chat_id).await {
@@ -463,7 +460,7 @@ pub async fn continue_chat(
 
     let user_data = get_user_from_id(pool, user_id).await?; // Check if user exists
 
-    if (user_data.len() < 1 && user_data.len() > 1) {
+    if user_data.len() < 1 && user_data.len() > 1 {
         return Err("User not found or multiple users found. Contact support".to_string());
     }
 
@@ -532,31 +529,27 @@ pub async fn continue_chat(
         }
     };
 
-    let message_id =
-        match create_new_message_record(pool, new_chat_id, prompt, position, 0, Some(embedding))
-            .await
-        {
-            Ok(v) => v,
-            Err(e) => {
-                return Err(format!(
-                    "Failed to create new message record. Failed with: \n {}",
-                    e
-                ));
-            }
-        };
+    match create_new_message_record(pool, new_chat_id, prompt, position, 0, Some(embedding)).await {
+        Ok(v) => v,
+        Err(e) => {
+            return Err(format!(
+                "Failed to create new message record. Failed with: \n {}",
+                e
+            ));
+        }
+    };
 
-    let message_id =
-        match create_new_message_record(pool, new_chat_id, response.clone(), position + 1, 1, None)
-            .await
-        {
-            Ok(v) => v,
-            Err(e) => {
-                return Err(format!(
-                    "Failed to create new message record. Failed with: \n {}",
-                    e
-                ));
-            }
-        };
+    match create_new_message_record(pool, new_chat_id, response.clone(), position + 1, 1, None)
+        .await
+    {
+        Ok(v) => v,
+        Err(e) => {
+            return Err(format!(
+                "Failed to create new message record. Failed with: \n {}",
+                e
+            ));
+        }
+    };
 
     return Ok(response);
 }
@@ -582,7 +575,7 @@ pub async fn get_similar_messages(
             match embedding_integration::calculate_similarity(&message.embedding, &embedded_prompt)
             {
                 Ok(v) => v,
-                Err(e) => continue,
+                Err(_) => continue,
             };
 
         if score > 0.6 {
@@ -656,7 +649,7 @@ async fn check_previous_interaction(
     chat_id: i32,
     user_id: i32,
 ) -> Result<bool, String> {
-    let data: Vec<Feedback> = match sqlx::query_as::<_, Feedback>(
+    let data: Vec<UserId> = match sqlx::query_as::<_, UserId>(
         "SELECT user_id FROM tblFeedback WHERE chat_id = $1 AND user_id = $2;",
     )
     .bind(chat_id)
@@ -693,7 +686,7 @@ pub async fn chat_interaction(
 
     let user_data = get_user_from_id(pool, user_id).await?; // Check if user exists
 
-    if (user_data.len() < 1 && user_data.len() > 1) {
+    if user_data.len() < 1 && user_data.len() > 1 {
         return Err("User not found or multiple users found. Contact support".to_string());
     }
 
@@ -707,7 +700,7 @@ pub async fn chat_interaction(
         }
     };
 
-    let mut return_data;
+    let return_data;
 
     if previous_interaction {
         return_data = match sqlx::query(
@@ -719,7 +712,7 @@ pub async fn chat_interaction(
         .execute(pool)
         .await
         {
-            Ok(v) => Ok("Interaction updated successfully".to_string()),
+            Ok(_) => Ok("Interaction updated successfully".to_string()),
             Err(e) => return Err(format!("Failed to update feedback. Failed with: \n {}", e)),
         };
     } else {
@@ -732,7 +725,7 @@ pub async fn chat_interaction(
         .execute(pool)
         .await
         {
-            Ok(v) => Ok("Interaction inserted successfully".to_string()),
+            Ok(_) => Ok("Interaction inserted successfully".to_string()),
             Err(e) => return Err(format!("Failed to insert feedback. Failed with: \n {}", e)),
         };
     }

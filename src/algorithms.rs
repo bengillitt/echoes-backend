@@ -1,8 +1,11 @@
-use argon2::{Argon2, PasswordHasher, password_hash::{SaltString, rand_core::OsRng}};
+use argon2::{
+    Argon2, PasswordHasher,
+    password_hash::{SaltString, rand_core::OsRng},
+};
 
-use super::structs::{PasswordPair, MessageWithScore, Claims};
+use super::structs::{Claims, MessageWithScore, PasswordPair};
 
-use jsonwebtoken::{decode, DecodingKey, Validation, Algorithm};
+use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode};
 
 use dotenv::dotenv;
 
@@ -26,7 +29,10 @@ pub fn hash_password(password: String) -> Result<PasswordPair, String> {
     });
 }
 
-pub fn hash_password_with_salt(password: String, salt_str: Vec<u8>) -> Result<PasswordPair, String> {
+pub fn hash_password_with_salt(
+    password: String,
+    salt_str: Vec<u8>,
+) -> Result<PasswordPair, String> {
     let salt = SaltString::from_b64(str::from_utf8(&salt_str).unwrap()).unwrap();
 
     let argon2 = Argon2::default();
@@ -42,22 +48,27 @@ pub fn hash_password_with_salt(password: String, salt_str: Vec<u8>) -> Result<Pa
 // Sorting Functions
 // -----------------
 
-pub fn sort_messages_by_similarity(messages: Vec<MessageWithScore>) -> Result<Vec<MessageWithScore>, String> {
-    let mut sorted_messages = messages.clone();
+pub fn sort_messages_by_similarity(
+    messages: Vec<MessageWithScore>,
+) -> Result<Vec<MessageWithScore>, String> {
+    let sorted_messages = messages.clone();
 
     if sorted_messages.len() <= 1 {
         return Ok(sorted_messages);
-     }
+    }
 
-     let midpoint = sorted_messages.len() / 2;
+    let midpoint = sorted_messages.len() / 2;
 
-     let left = sort_messages_by_similarity(sorted_messages[..midpoint].to_vec())?;
-     let right = sort_messages_by_similarity(sorted_messages[midpoint..].to_vec())?;
+    let left = sort_messages_by_similarity(sorted_messages[..midpoint].to_vec())?;
+    let right = sort_messages_by_similarity(sorted_messages[midpoint..].to_vec())?;
 
-     return Ok(merge_messages(left, right));
+    return Ok(merge_messages(left, right));
 }
 
-fn merge_messages(left: Vec<MessageWithScore>, right: Vec<MessageWithScore>) -> Vec<MessageWithScore> {
+fn merge_messages(
+    left: Vec<MessageWithScore>,
+    right: Vec<MessageWithScore>,
+) -> Vec<MessageWithScore> {
     let mut merged: Vec<MessageWithScore> = Vec::new();
 
     let mut left_index = 0;
@@ -81,11 +92,10 @@ fn merge_messages(left: Vec<MessageWithScore>, right: Vec<MessageWithScore>) -> 
     while right_index < right.len() {
         merged.push(right[right_index].clone());
         right_index += 1;
-     }
+    }
 
-     return merged;
+    return merged;
 }
-
 
 // -----------------
 // JWT Functions

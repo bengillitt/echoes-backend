@@ -1,15 +1,15 @@
-use sqlx::{sqlite::SqlitePool, FromRow};
 use serde::{Deserialize, Serialize};
+use sqlx::{FromRow, sqlite::SqlitePool};
 
 // -------------
 // DB Structs
 // -------------
 
-#[derive(FromRow)]
-pub struct EmbeddingReturnData {
-    pub id: i32,
-    pub embedding: Vec<u8>,
-}
+// #[derive(FromRow)]
+// pub struct EmbeddingReturnData {
+//     pub id: i32,
+//     pub embedding: Vec<u8>,
+// }
 
 #[derive(FromRow)]
 pub struct MessageReturnData {
@@ -58,12 +58,6 @@ pub struct ID {
 
 #[derive(FromRow)]
 pub struct UserId {
-    pub id: i32,
-    pub user_id: i32,
-}
-
-#[derive(FromRow)]
-pub struct Feedback {
     pub user_id: i32,
 }
 
@@ -91,18 +85,6 @@ pub struct UserInput {
     pub username: String,
     pub email: String,
     pub password: String,
-}
-
-#[derive(Deserialize)]
-pub struct UserSearch {
-    pub username: String,
-}
-
-#[derive(Deserialize)]
-pub struct SimilarityPrompts {
-    pub prompt1: String,
-    pub prompt2: String,
-    pub token: String,
 }
 
 #[derive(Deserialize)]
@@ -151,7 +133,6 @@ pub struct LLMOutput {
 pub struct LLMContent {
     pub text: String,
 }
-
 
 // -------------
 // Embedding Structs
