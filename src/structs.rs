@@ -1,7 +1,10 @@
 use sqlx::{sqlite::SqlitePool, FromRow};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
+// -------------
 // DB Structs
+// -------------
+
 #[derive(FromRow)]
 pub struct EmbeddingReturnData {
     pub id: i32,
@@ -25,6 +28,7 @@ pub struct Message {
     pub embedding: Vec<f32>,
 }
 
+#[derive(Clone, Serialize)]
 pub struct MessageWithScore {
     pub id: i32,
     pub contents: String,
@@ -44,7 +48,9 @@ pub struct User {
     pub is_admin: bool,
 }
 
+// ----------------
 // Server Structs
+// ----------------
 #[derive(Deserialize)]
 pub struct Prompt {
     pub prompt: String
@@ -73,8 +79,50 @@ pub struct SimilarityPrompts {
     pub prompt2: String,
 }
 
+// ---------------
 // Algorithms
+// ---------------
 pub struct PasswordPair {
     pub hashed_password: String,
     pub salt: Vec<u8>,
+}
+
+// -------------
+// LLM Structs
+// -------------
+
+#[derive(Deserialize)]
+pub struct LLMResponse {
+    pub output: Vec<LLMOutput>,
+}
+
+#[derive(Deserialize)]
+pub struct LLMOutput {
+    pub content: Vec<LLMContent>,
+}
+
+#[derive(Deserialize)]
+pub struct LLMContent {
+    pub text: String,
+}
+
+
+// -------------
+// Embedding Structs
+// -------------
+
+#[derive(Serialize)]
+pub struct OpenAIRequest {
+    pub input: String,
+    pub model: String,
+}
+
+#[derive(Deserialize)]
+pub struct OpenAIEmbedResponse {
+    pub data: Vec<OpenAIEmbedData>,
+}
+
+#[derive(Deserialize)]
+pub struct OpenAIEmbedData {
+    pub embedding: Vec<f32>,
 }

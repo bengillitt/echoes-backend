@@ -8,7 +8,7 @@ use tokio::sync::mpsc;
 
 use super::{db_integration, embedding_integration, llm_integration};
 
-use super::structs::{AppState, UserInput, Prompt, SimilarityPrompts};
+use super::structs::{AppState, UserInput, Prompt, SimilarityPrompts, MessageWithScore};
 
 pub async fn spawn_server(mut rx: mpsc::Receiver<SqlitePool>) {
     let pool = rx.recv().await.unwrap();
@@ -28,7 +28,7 @@ pub async fn spawn_server(mut rx: mpsc::Receiver<SqlitePool>) {
             get(|| async {}).post(login_user),
         ).route(
             "/getSimilarChats",
-            get(get_similar_chats)
+            get(|| async {}).post(get_similar_chats),
         ).route(
             "/createNewChat",
             get(|| async {}).post(create_new_chat),
@@ -65,18 +65,18 @@ async fn login_user(State(pool_state): State<AppState>, Json(payload): Json<User
     };
 }
 
-async fn get_similar_chats(State(pool_state): State<AppState>, Json(payload): Json<Prompt>) -> String {
+async fn get_similar_chats(State(pool_state): State<AppState>, Json(payload): Json<Prompt>) -> Json<Vec<MessageWithScore>> {
     let embedded_prompt = match embedding_integration::get_embedding(payload.prompt).await  {
         Ok(v) => v,
-        Err(e) => return e,
+        Err(e) => return Json(vec![]),
     };
     
     let return_data = match db_integration::get_similar_messages(&pool_state.pool, embedded_prompt).await {
         Ok(s) => s,
-        Err(e) => return e,
+        Err(e) => return Json(vec![]),
      };
 
-     return "in progress".to_string();
+     return Json(return_data);
 }
 
 // async fn upload_embedding(Json(payload): Json<Prompt>) -> String {
@@ -107,7 +107,10 @@ async fn test_similarity(Json(payload): Json<SimilarityPrompts>) -> String {
 
     println!("{:?}", embedding1);
     
-    return embedding_integration::calculate_similarity(&embedding1, &embedding2).to_string();
+    return match embedding_integration::calculate_similarity(&embedding1, &embedding2) {
+        Ok(s) => s.to_string(),
+        Err(e) => e,
+    };
 }
 
 async fn lookup_chats(State(pool_state): State<AppState>) -> String {
@@ -117,4 +120,3 @@ async fn lookup_chats(State(pool_state): State<AppState>) -> String {
 async fn chat_interaction(State(pool_state): State<AppState>) -> String {
     return "In Progress".to_string();
 }
-

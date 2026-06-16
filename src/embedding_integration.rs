@@ -6,21 +6,7 @@ use dotenv::dotenv;
 
 use std::env;
 
-#[derive(Serialize)]
-struct OpenAIEmbedRequest {
-    input: String,
-    model: String,
-}
-
-#[derive(Deserialize)]
-struct OpenAIEmbedResponse {
-    data: Vec<OpenAIEmbedData>,
-}
-
-#[derive(Deserialize)]
-struct OpenAIEmbedData {
-    embedding: Vec<f32>,
-}
+use super::structs::{OpenAIEmbedResponse, OpenAIRequest, OpenAIEmbedData};
 
 pub async fn get_embedding(prompt: String) -> Result<Vec<f32>, String> {
     dotenv().ok();
@@ -29,7 +15,7 @@ pub async fn get_embedding(prompt: String) -> Result<Vec<f32>, String> {
 
     let res = match client.post("https://api.openai.com/v1/embeddings")
     .bearer_auth(env::var("OPENAI_API_KEY").unwrap()).json(
-        &OpenAIEmbedRequest {
+        &OpenAIRequest {
             input: prompt,
             model: "text-embedding-3-large".to_string(), // model can be changes if needed
         }
@@ -80,15 +66,15 @@ fn calculate_magnitude(v: &Vec<f32>,) -> f32 {
     return total_squares.sqrt();
 }
 
-pub fn calculate_similarity(v1: &Vec<f32>, v2: &Vec<f32>) -> f32 {
-    let dot_product = calculate_dot_product(v1, v2).unwrap();
+pub fn calculate_similarity(v1: &Vec<f32>, v2: &Vec<f32>) -> Result<f32, String> {
+    let dot_product = calculate_dot_product(v1, v2)?;
 
     let magnitude1 = calculate_magnitude(v1);
     let magnitude2 = calculate_magnitude(v2);
 
     if magnitude1 * magnitude2 == 0.0 {
-        return 0.0;
+        return Err("One or both vectors have zero magnitude".to_string());
     } 
 
-    return dot_product / (magnitude1 * magnitude2);
+    return Ok(dot_product / (magnitude1 * magnitude2));
 }

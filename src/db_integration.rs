@@ -173,7 +173,7 @@ async fn upload_embedding(pool: &SqlitePool, embedding: Vec<f32>) -> Result<Stri
     return Ok(return_data);
 }
 
-pub async fn get_similar_messages(pool: &SqlitePool, embedded_prompt: Vec<f32>) -> Result<String, String> {
+pub async fn get_similar_messages(pool: &SqlitePool, embedded_prompt: Vec<f32>) -> Result<Vec<MessageWithScore>, String> {
     let messages = match get_messages(pool).await {
         Ok(v) => v,
         Err(e) => return Err(format!("Failed to fetch embeddings from db. Failed with: \n{}", e)),
@@ -182,7 +182,7 @@ pub async fn get_similar_messages(pool: &SqlitePool, embedded_prompt: Vec<f32>) 
     let mut similar_messages: Vec<MessageWithScore> = Vec::new();
 
     for message in messages {
-        let score = embedding_integration::calculate_similarity(&message.embedding, &embedded_prompt);
+        let score = embedding_integration::calculate_similarity(&message.embedding, &embedded_prompt)?;
 
         if score > 0.6 {
             similar_messages.push(MessageWithScore {
@@ -196,7 +196,14 @@ pub async fn get_similar_messages(pool: &SqlitePool, embedded_prompt: Vec<f32>) 
         }
     }
 
-    return Ok("In Progress".to_string());
+    // Create a sorting algorithm
+    let sorted_messages = match algorithms::sort_messages_by_similarity(similar_messages) {
+        Ok(v) => v,
+        Err(e) => return Err(format!("Failed to sort messages by similarity. Failed with: \n {}", e)),
+    };
+    
+
+    return Ok(sorted_messages);
 }
 
 
