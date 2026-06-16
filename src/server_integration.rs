@@ -90,7 +90,7 @@ async fn register_user(State(pool_state): State<AppState>, Json(payload): Json<U
         "message": "User registered successfully",
     }));
 
-    return (StatusCode::OK, [(header::SET_COOKIE, cookie)], body).into_response(); // TODO return token as a cookie
+    return (StatusCode::OK, [(header::SET_COOKIE, cookie)], body).into_response();
 }
 
 async fn login_user(State(pool_state): State<AppState>, Json(payload): Json<UserInput>) -> Response {
@@ -120,7 +120,7 @@ async fn login_user(State(pool_state): State<AppState>, Json(payload): Json<User
         "message": "User logged in successfully",
     }));
     
-    return (StatusCode::OK, [(header::SET_COOKIE, cookie)], body).into_response(); // TODO return token as a cookie
+    return (StatusCode::OK, [(header::SET_COOKIE, cookie)], body).into_response();
 }
 
 async fn get_similar_chats(State(pool_state): State<AppState>, Json(payload): Json<Prompt>) -> Json<Vec<MessageWithScore>> {
