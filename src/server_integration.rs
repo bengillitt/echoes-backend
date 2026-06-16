@@ -45,7 +45,7 @@ pub async fn spawn_server(mut rx: mpsc::Receiver<SqlitePool>) {
             "/createNewChat", // Done
             get(|| async {}).post(create_new_chat),
         ).route(
-            "/continueChat", // In Progress
+            "/continueChat", // Done
             get(|| async {}).post(continue_chat),
         ).route(
             "/getChat", // In Progress

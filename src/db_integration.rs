@@ -190,7 +190,7 @@ async fn upload_embedding(pool: &SqlitePool, embedding: Vec<f32>) -> Result<Stri
 async fn create_new_chat_record(pool: &SqlitePool, user_id: i32, continue_chat_id: Option<i32>) -> Result<i32, String> { 
     
     if (continue_chat_id.is_some()) {
-        let new_chat_id = match sqlx::query_as::<_, ID>("INSERT INTO tblChats (user_id, continue_chat) VALUES ($1, $2) RETURNING id;").bind(user_id).bind(continue_chat_id.unwrap()).fetch_one(pool).await{
+        let new_chat_id = match sqlx::query_as::<_, ID>("INSERT INTO tblChats (user_id, continuation_chat_id) VALUES ($1, $2) RETURNING id;").bind(user_id).bind(continue_chat_id.unwrap()).fetch_one(pool).await{
             Ok(v) => v,
             Err(e) => return Err(format!("Failed to create new chat record. Failed with: \n {}", e.to_string())),
         }.id;
@@ -345,7 +345,7 @@ pub async fn continue_chat(pool: &SqlitePool, chat_id: i32, prompt: String, toke
         Err(e) => return Err(format!("Failed to upload to llm. Failed with: \n {}", e)),
     };
 
-    let embedding = match embedding_integration::get_embedding(prompt.clone()).await { // add previous prompt to context for embedding
+    let embedding = match embedding_integration::get_embedding(format!("{}{}", context_str, prompt)).await { // add previous prompt to context for embedding
         Ok(v) => v,
         Err(e) => return Err(format!("Failed to get embedding. Failed with: \n {}", e)),
     };
@@ -409,8 +409,6 @@ pub async fn get_similar_messages(pool: &SqlitePool, embedded_prompt: Vec<f32>) 
         }
     }
 
-    println!("{:?}", similar_messages);
-
     // Create a sorting algorithm
     let sorted_messages = match algorithms::sort_messages_by_similarity(similar_messages) {
         Ok(v) => v,
@@ -420,8 +418,6 @@ pub async fn get_similar_messages(pool: &SqlitePool, embedded_prompt: Vec<f32>) 
 
     return Ok(sorted_messages);
 }
-
-
 
 async fn get_messages(pool: &SqlitePool) -> Result<Vec<Message>, String> {
     let data: Vec<MessageReturnData> = match sqlx::query_as::<_, MessageReturnData>("SELECT id, contents, message_role, chat_id, position, embedding FROM tblMessages;").fetch_all(pool).await {
