@@ -6,7 +6,7 @@ use dotenv::dotenv;
 
 use super::structs::{OpenAIRequest, LLMResponse};
 
-pub async fn upload_to_llm(prompt: String) -> Result<String, String> {
+pub async fn upload_to_llm(prompt: String, context: Option<String>) -> Result<String, String> {
     dotenv().ok();
 
     let client = reqwest::Client::new();
@@ -14,6 +14,11 @@ pub async fn upload_to_llm(prompt: String) -> Result<String, String> {
     let mut input = String::new();
 
     input.push_str(&std::env::var("LLM_INSTRUCTIONS").unwrap());
+
+    if let Some(context) = context {
+        input.push_str(&context);
+    }
+
     input.push_str(&prompt);
 
     let res = client.post("https://api.openai.com/v1/responses")

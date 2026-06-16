@@ -2,9 +2,11 @@ pub use sqlx::{sqlite::SqlitePool};
 use super::embedding_integration;
 use super::llm_integration;
 
+use async_recursion::async_recursion;
+
 use tokio::sync::mpsc;
 
-use super::structs::{User, Message, MessageWithScore, MessageReturnData, PasswordPair, ID};
+use super::structs::{User, Message, MessageWithScore, MessageReturnData, PasswordPair, ID, UserId, ContinuationChat};
 
 use super::algorithms;
 
@@ -185,7 +187,18 @@ async fn upload_embedding(pool: &SqlitePool, embedding: Vec<f32>) -> Result<Stri
     return Ok(return_data);
 }
 
-async fn create_new_chat_record(pool: &SqlitePool, user_id: i32) -> Result<i32, String> { 
+async fn create_new_chat_record(pool: &SqlitePool, user_id: i32, continue_chat_id: Option<i32>) -> Result<i32, String> { 
+    
+    if (continue_chat_id.is_some()) {
+        let new_chat_id = match sqlx::query_as::<_, ID>("INSERT INTO tblChats (user_id, continue_chat) VALUES ($1, $2) RETURNING id;").bind(user_id).bind(continue_chat_id.unwrap()).fetch_one(pool).await{
+            Ok(v) => v,
+            Err(e) => return Err(format!("Failed to create new chat record. Failed with: \n {}", e.to_string())),
+        }.id;
+
+        return Ok(new_chat_id);
+    }
+
+
     let new_chat_id = match sqlx::query_as::<_, ID>("INSERT INTO tblChats (user_id) VALUES ($1) RETURNING id;").bind(user_id).fetch_one(pool).await{
         Ok(v) => v,
         Err(e) => return Err(format!("Failed to create new chat record. Failed with: \n {}", e.to_string())),
@@ -232,12 +245,12 @@ pub async fn upload_and_return_chat(pool: &SqlitePool, prompt: String, token: St
         return Err("User not found or multiple users found. Contact support".to_string());
     }
     
-    let response = match llm_integration::upload_to_llm(prompt.clone()).await {
+    let response = match llm_integration::upload_to_llm(prompt.clone(), None).await {
         Ok(v) => v,
         Err(e) => return Err(format!("Failed to upload to llm. Failed with: \n {}", e)),
     };
 
-    let chat_id = match create_new_chat_record(pool, user_id).await {
+    let chat_id = match create_new_chat_record(pool, user_id, None).await {
         Ok(v) => v,
         Err(e) => return Err(format!("Failed to create new chat record. Failed with: \n {}", e)),
     };
@@ -253,6 +266,115 @@ pub async fn upload_and_return_chat(pool: &SqlitePool, prompt: String, token: St
     };
 
     let message_id = match create_new_message_record(pool, chat_id, response.clone(), 1, 1, None).await {
+        Ok(v) => v,
+        Err(e) => return Err(format!("Failed to create new message record. Failed with: \n {}", e)),
+    };
+
+    return Ok(response);
+}
+
+async fn get_next_position(pool: &SqlitePool, chat_id: i32) -> Result<i32, String> {
+    let data: Vec<MessageReturnData> = match sqlx::query_as::<_, MessageReturnData>("SELECT id, contents, chat_id, position, message_role, embedding FROM tblMessages WHERE chat_id = $1;").bind(chat_id).fetch_all(pool).await {
+        Ok(v) => v,
+        Err(e) => return Err(format!("Failed to get next position. Failed with: \n {}", e)),
+    };
+
+    return Ok(data.len() as i32);
+}
+
+#[async_recursion]
+async fn get_context(pool: &SqlitePool, chat_id: i32) -> Result<String, String> {
+    let data: Vec<MessageReturnData> = match sqlx::query_as::<_, MessageReturnData>("SELECT id, contents, chat_id, position, message_role, embedding FROM tblMessages WHERE chat_id = $1 ORDER BY position ASC;").bind(chat_id).fetch_all(pool).await {
+        Ok(v) => v,
+        Err(e) => return Err(format!("Failed to get context. Failed with: \n {}", e)),
+    };
+
+    let mut context = String::new();
+
+    let chat_data = match sqlx::query_as::<_, ContinuationChat>("SELECT continuation_chat_id FROM tblChats WHERE id = $1;").bind(chat_id).fetch_one(pool).await {
+        Ok(v) => v,
+        Err(e) => return Err(format!("Failed to get continuation chat. Failed with: \n {}", e)),
+    };
+
+    if (chat_data.continuation_chat_id.is_some()) {
+        let continuation_chat_id = chat_data.continuation_chat_id.unwrap();
+
+        let continuation_context = match get_context(pool, continuation_chat_id).await {
+            Ok(v) => v,
+            Err(e) => return Err(format!("Failed to get continuation context. Failed with: \n {}", e)),
+        };
+
+        context.push_str(format!("{}\n\n", continuation_context).as_str());
+    }
+
+    for message in data {
+        context.push_str(format!("{}\n", message.contents).as_str());
+    }
+
+    return Ok(context);
+}
+
+pub async fn continue_chat(pool: &SqlitePool, chat_id: i32, prompt: String, token: String) -> Result<String, String> {
+    let user_id = match check_token(token) {
+        Ok(v) => v,
+        Err(e) => return Err(format!("Failed to verify token. Failed with: \n {}", e)),
+    };
+
+    let user_data = get_user_from_id(pool, user_id).await?; // Check if user exists
+
+    if (user_data.len() < 1 && user_data.len() > 1) {
+        return Err("User not found or multiple users found. Contact support".to_string());
+    }
+
+    let mut context = String::new();
+
+    context.push_str("Following this is context from the previous chat. Please use this context to answer the following prompt. \n\n");
+
+    let context_str = match get_context(pool, chat_id).await {
+        Ok(v) => v,
+        Err(e) => return Err(format!("Failed to get context. Failed with: \n {}", e)),
+    };
+
+    context.push_str(&context_str);
+    context.push_str("\n\nEnd of context. Please answer the following prompt: \n\n");
+
+    println!("Context: {}", context);
+
+    let response = match llm_integration::upload_to_llm(prompt.clone(), Some(context)).await {
+        Ok(v) => v,
+        Err(e) => return Err(format!("Failed to upload to llm. Failed with: \n {}", e)),
+    };
+
+    let embedding = match embedding_integration::get_embedding(prompt.clone()).await { // add previous prompt to context for embedding
+        Ok(v) => v,
+        Err(e) => return Err(format!("Failed to get embedding. Failed with: \n {}", e)),
+    };
+
+    let is_owner = match sqlx::query_as::<_, UserId>("SELECT id, user_id FROM tblChats WHERE id = $1;").bind(chat_id).fetch_one(pool).await {
+        Ok(v) => v.user_id == user_id,
+        Err(e) => return Err(format!("Failed to verify chat ownership. Failed with: \n {}", e)),
+    };
+
+    let mut new_chat_id = chat_id;
+
+    if !is_owner {
+        new_chat_id = match create_new_chat_record(pool, user_id, Some(chat_id)).await {
+            Ok(v) => v,
+            Err(e) => return Err(format!("Failed to create new chat record. Failed with: \n {}", e)),
+        };
+    }
+
+    let position = match get_next_position(pool, new_chat_id).await {
+        Ok(v) => v,
+        Err(e) => return Err(format!("Failed to get next position. Failed with: \n {}", e)),
+    };
+
+    let message_id = match create_new_message_record(pool, new_chat_id, prompt, position, 0, Some(embedding)).await {
+        Ok(v) => v,
+        Err(e) => return Err(format!("Failed to create new message record. Failed with: \n {}", e)),
+    };
+
+    let message_id = match create_new_message_record(pool, new_chat_id, response.clone(), position + 1, 1, None).await {
         Ok(v) => v,
         Err(e) => return Err(format!("Failed to create new message record. Failed with: \n {}", e)),
     };

@@ -16,7 +16,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::{db_integration, embedding_integration, llm_integration};
 
-use super::structs::{AppState, UserInput, Prompt, SimilarityPrompts, MessageWithScore, Claims};
+use super::structs::{AppState, UserInput, Prompt, SimilarityPrompts, MessageWithScore, Claims, ContinueChatInput};
 
 use dotenv::dotenv;
 
@@ -155,8 +155,11 @@ async fn create_new_chat(State(pool_state): State<AppState>, Json(payload): Json
     };
 }
 
-async fn continue_chat(State(pool_state): State<AppState>, Json(payload): Json<Prompt>) -> String {
-    return "In Progress".to_string();
+async fn continue_chat(State(pool_state): State<AppState>, Json(payload): Json<ContinueChatInput>) -> String {
+    return match db_integration::continue_chat(&pool_state.pool, payload.chat_id, payload.prompt, payload.token).await {
+        Ok(s) => s,
+        Err(e) => format!("An error occurred: \n {}", e),
+    };
 }
 
 async fn test_similarity(Json(payload): Json<SimilarityPrompts>) -> String {
