@@ -2,13 +2,23 @@ use axum::{Router, routing::get};
 
 use sqlx::sqlite::SqlitePool;
 
+use axum::response::{IntoResponse, Response};
+
+use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
+
+use axum::http::{StatusCode, header};
+
 use axum::extract::{Json, State};
 
 use tokio::sync::mpsc;
 
+use std::time::{SystemTime, UNIX_EPOCH};
+
 use super::{db_integration, embedding_integration, llm_integration};
 
-use super::structs::{AppState, UserInput, Prompt, SimilarityPrompts, MessageWithScore};
+use super::structs::{AppState, UserInput, Prompt, SimilarityPrompts, MessageWithScore, Claims};
+
+use dotenv::dotenv;
 
 pub async fn spawn_server(mut rx: mpsc::Receiver<SqlitePool>) {
     let pool = rx.recv().await.unwrap();
@@ -51,11 +61,28 @@ pub async fn spawn_server(mut rx: mpsc::Receiver<SqlitePool>) {
     axum::serve(listener, app).await.unwrap();
 }
 
-async fn register_user(State(pool_state): State<AppState>, Json(payload): Json<UserInput>) -> String {
-    return match db_integration::register_user(&pool_state.pool, payload.username, payload.email, payload.password).await {
+async fn register_user(State(pool_state): State<AppState>, Json(payload): Json<UserInput>) -> Response {
+    dotenv().ok();
+    let secret = std::env::var("JWT_SECRET").expect("JWT_SECRET must be set in .env file");
+
+    let current_time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+
+    let user =  match db_integration::register_user(&pool_state.pool, payload.username, payload.email, payload.password).await {
         Ok(s) => s,
-        Err(e) => format!("An error occured \n {}", e),
+        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, format!("An error occured \n {}", e)).into_response(),
     };
+
+    let claims = Claims {
+        sub: user,
+        exp: (current_time + 60 * 60) as usize, // Token expires in 1 hour
+    };
+
+    let token = match encode(&Header::default(), &claims, &EncodingKey::from_secret(secret.as_ref())) {
+        Ok(t) => t,
+        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, format!("Token generation failed \n {}", e)).into_response(),
+    };
+
+    return (StatusCode::OK, token).into_response();
 }
 
 async fn login_user(State(pool_state): State<AppState>, Json(payload): Json<UserInput>) -> String {
@@ -86,8 +113,11 @@ async fn get_similar_chats(State(pool_state): State<AppState>, Json(payload): Js
 //     };
 // }
 
-async fn create_new_chat(Json(payload): Json<Prompt>) -> String {
-    return llm_integration::upload_to_llm(payload.prompt).await.unwrap();
+async fn create_new_chat(State(pool_state): State<AppState>, Json(payload): Json<Prompt>) -> String { // Need to first figure out how tokens work to get and keep user data
+    return match db_integration::upload_and_return_chat(&pool_state.pool, payload.prompt).await {
+        Ok(s) => s,
+        Err(e) => format!("An error occurred: \n {}", e),
+    };
 }
 
 async fn continue_chat(State(pool_state): State<AppState>, Json(payload): Json<Prompt>) -> String {

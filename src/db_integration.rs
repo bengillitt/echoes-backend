@@ -1,9 +1,10 @@
 pub use sqlx::{sqlite::SqlitePool};
 use super::embedding_integration;
+use super::llm_integration;
 
 use tokio::sync::mpsc;
 
-use super::structs::{User, Message, MessageWithScore, MessageReturnData, PasswordPair};
+use super::structs::{User, Message, MessageWithScore, MessageReturnData, PasswordPair, ID};
 
 use super::algorithms;
 
@@ -72,8 +73,8 @@ async fn upload_user(pool: &SqlitePool, username: String, email: String, passwor
     };
     
     println!("Uploading User");
-    let return_data = match sqlx::query("INSERT INTO tblUsers (email, username, hashed_password, salt) VALUES ($1, $2, $3, $4)").bind(email).bind(username).bind(password_pair.hashed_password).bind(password_pair.salt).execute(pool).await {
-        Ok(_) => "User Uploaded".to_string(),
+    let return_data = match sqlx::query_as::<_, ID>("INSERT INTO tblUsers (email, username, hashed_password, salt) VALUES ($1, $2, $3, $4) RETURNING id").bind(email).bind(username).bind(password_pair.hashed_password).bind(password_pair.salt).fetch_one(pool).await {
+        Ok(id) => id.id.to_string(),
         Err(err) => match err {
             sqlx::Error::Database(err) => {
                 return Err(format!("Database Error. Failed with {}", err.to_string()));
@@ -173,6 +174,29 @@ async fn upload_embedding(pool: &SqlitePool, embedding: Vec<f32>) -> Result<Stri
     return Ok(return_data);
 }
 
+async fn create_new_chat_record(pool: &SqlitePool, response: String) -> Result<(), String> {
+    let new_chat_id = match sqlx::query_as::<_, ID>("INSERT INTO tblChats (response) VALUES ($1) RETURNING id;").bind(response).fetch_one(pool).await{
+        Ok(v) => v,
+        Err(e) => return Err(format!("Failed to create new chat record. Failed with: \n {}", e.to_string())),
+    }.id;
+
+    // let return_data = match sqlx::query("INSERT INTO tblMessages ()")
+    
+
+    return Ok(());
+}
+
+pub async fn upload_and_return_chat(pool: &SqlitePool, prompt: String) -> Result<String, String> {
+    let response = match llm_integration::upload_to_llm(prompt).await {
+        Ok(v) => v,
+        Err(e) => return Err(format!("Failed to upload to llm. Failed with: \n {}", e)),
+    };
+
+
+
+    return Ok(response);
+}
+
 pub async fn get_similar_messages(pool: &SqlitePool, embedded_prompt: Vec<f32>) -> Result<Vec<MessageWithScore>, String> {
     let messages = match get_messages(pool).await {
         Ok(v) => v,
@@ -190,6 +214,7 @@ pub async fn get_similar_messages(pool: &SqlitePool, embedded_prompt: Vec<f32>) 
                 contents: message.contents,
                 chat_id: message.chat_id,
                 position: message.position,
+                message_role: message.message_role,
                 embedding: message.embedding,
                 score,
             });
@@ -209,7 +234,7 @@ pub async fn get_similar_messages(pool: &SqlitePool, embedded_prompt: Vec<f32>) 
 
 
 async fn get_messages(pool: &SqlitePool) -> Result<Vec<Message>, String> {
-    let data: Vec<MessageReturnData> = match sqlx::query_as::<_, MessageReturnData>("SELECT id, contents, chat_id, position, embedding FROM tblEmbeddings;").fetch_all(pool).await {
+    let data: Vec<MessageReturnData> = match sqlx::query_as::<_, MessageReturnData>("SELECT id, contents, message_role, chat_id, position, embedding FROM tblEmbeddings;").fetch_all(pool).await {
         Ok(v) => v,
         Err(e) => return Err(format!("Failed to get embeddings from db. Failed with: \n {}", e)),
     };
@@ -222,6 +247,7 @@ async fn get_messages(pool: &SqlitePool) -> Result<Vec<Message>, String> {
             contents: message.contents,
             chat_id: message.chat_id,
             position: message.position,
+            message_role: message.message_role,
             embedding: blob_to_vec(&message.embedding),
         });
     }

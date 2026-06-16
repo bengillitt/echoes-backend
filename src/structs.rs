@@ -17,6 +17,7 @@ pub struct MessageReturnData {
     pub contents: String,
     pub chat_id: i32,
     pub position: i32,
+    pub message_role: i32,
     pub embedding: Vec<u8>,
 }
 
@@ -25,6 +26,7 @@ pub struct Message {
     pub contents: String,
     pub chat_id: i32,
     pub position: i32,
+    pub message_role: i32,
     pub embedding: Vec<f32>,
 }
 
@@ -34,6 +36,7 @@ pub struct MessageWithScore {
     pub contents: String,
     pub chat_id: i32,
     pub position: i32,
+    pub message_role: i32,
     pub embedding: Vec<f32>,
     pub score: f32,
 }
@@ -46,6 +49,11 @@ pub struct User {
     pub hashed_password: String,
     pub salt: Vec<u8>,
     pub is_admin: bool,
+}
+
+#[derive(FromRow)]
+pub struct ID {
+    pub id: i32,
 }
 
 // ----------------
@@ -77,6 +85,12 @@ pub struct UserSearch {
 pub struct SimilarityPrompts {
     pub prompt1: String,
     pub prompt2: String,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct Claims {
+    pub sub: String,
+    pub exp: usize,
 }
 
 // ---------------
