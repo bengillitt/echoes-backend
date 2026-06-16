@@ -20,6 +20,8 @@ use super::structs::{AppState, UserInput, Prompt, SimilarityPrompts, MessageWith
 
 use dotenv::dotenv;
 
+use serde_json::json;
+
 pub async fn spawn_server(mut rx: mpsc::Receiver<SqlitePool>) {
     let pool = rx.recv().await.unwrap();
 
@@ -82,7 +84,13 @@ async fn register_user(State(pool_state): State<AppState>, Json(payload): Json<U
         Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, format!("Token generation failed \n {}", e)).into_response(),
     };
 
-    return (StatusCode::OK, token).into_response(); // TODO return token as a cookie
+    let cookie = format!("token={}; HttpOnly; Secure;", token);
+
+    let body = Json(json!({
+        "message": "User registered successfully",
+    }));
+
+    return (StatusCode::OK, [(header::SET_COOKIE, cookie)], body).into_response(); // TODO return token as a cookie
 }
 
 async fn login_user(State(pool_state): State<AppState>, Json(payload): Json<UserInput>) -> Response {
@@ -105,8 +113,14 @@ async fn login_user(State(pool_state): State<AppState>, Json(payload): Json<User
         Ok(t) => t,
         Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, format!("Token generation failed \n {}", e)).into_response(),
     };
+
+    let cookie = format!("token={}; HttpOnly; Secure;", token);
+
+    let body = Json(json!({
+        "message": "User logged in successfully",
+    }));
     
-    return (StatusCode::OK, token).into_response(); // TODO return token as a cookie
+    return (StatusCode::OK, [(header::SET_COOKIE, cookie)], body).into_response(); // TODO return token as a cookie
 }
 
 async fn get_similar_chats(State(pool_state): State<AppState>, Json(payload): Json<Prompt>) -> Json<Vec<MessageWithScore>> {
