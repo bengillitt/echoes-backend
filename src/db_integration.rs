@@ -1,4 +1,4 @@
-pub use sqlx::{sqlite::SqlitePool, FromRow};
+pub use sqlx::{sqlite::SqlitePool};
 use super::embedding_integration;
 
 use tokio::sync::mpsc;
@@ -161,22 +161,16 @@ async fn get_user_from_email(pool: &SqlitePool, email: &str) -> Result<Vec<User>
     return Ok(data);
 }
 
-async fn upload_embedding(pool: &SqlitePool, embedding: Vec<f32>) -> String {
+async fn upload_embedding(pool: &SqlitePool, embedding: Vec<f32>) -> Result<String, String> {
     println!("uploading embedding!");
 
     let blob = vec_to_blob(&embedding);
     let return_data = match sqlx::query("INSERT INTO tblEmbeddings (embedding) VALUES ($1);").bind(blob).execute(pool).await {
         Ok(_) => "Uploaded Embedding".to_string(),
-        Err(err) => match err {
-            sqlx::Error::Database(err) => {
-                println!("{}", err);
-                handle_db_error(&*err.code().unwrap()).to_string()
-            },
-            _ => panic!("Unexpected error"),
-        },
+        Err(err) => return Err(format!("Failed to upload embedding. Failed with: \n {}", err.to_string())),
     };
 
-    return return_data;
+    return Ok(return_data);
 }
 
 pub async fn get_similar_messages(pool: &SqlitePool, embedded_prompt: Vec<f32>) -> Result<String, String> {
@@ -228,12 +222,12 @@ async fn get_messages(pool: &SqlitePool) -> Result<Vec<Message>, String> {
     return Ok(return_data);
 }
 
-fn handle_db_error(err_code: &str) -> String {
-    match err_code {
-        "2067" => "DB element not unique".to_string(),
-        _ => panic!("db error: Err Code: {}", err_code),
-    }
-}
+// fn handle_db_error(err_code: &str) -> String {
+//     match err_code {
+//         "2067" => "DB element not unique".to_string(),
+//         _ => panic!("db error: Err Code: {}", err_code),
+//     }
+// }
 
 fn vec_to_blob(v: &[f32]) -> Vec<u8> {
     v.iter().flat_map(|x| x.to_le_bytes()).collect()

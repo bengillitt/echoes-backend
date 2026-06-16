@@ -56,7 +56,7 @@ pub struct AppState {
 }
 
 #[derive(Deserialize)]
-pub struct NewUser {
+pub struct UserInput {
     pub username: String,
     pub email: String,
     pub password: String,

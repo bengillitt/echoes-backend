@@ -8,7 +8,7 @@ use tokio::sync::mpsc;
 
 use super::{db_integration, embedding_integration, llm_integration};
 
-use super::structs::{AppState, NewUser, Prompt, SimilarityPrompts};
+use super::structs::{AppState, UserInput, Prompt, SimilarityPrompts};
 
 pub async fn spawn_server(mut rx: mpsc::Receiver<SqlitePool>) {
     let pool = rx.recv().await.unwrap();
@@ -51,14 +51,14 @@ pub async fn spawn_server(mut rx: mpsc::Receiver<SqlitePool>) {
     axum::serve(listener, app).await.unwrap();
 }
 
-async fn register_user(State(pool_state): State<AppState>, Json(payload): Json<NewUser>) -> String {
+async fn register_user(State(pool_state): State<AppState>, Json(payload): Json<UserInput>) -> String {
     return match db_integration::register_user(&pool_state.pool, payload.username, payload.email, payload.password).await {
         Ok(s) => s,
         Err(e) => format!("An error occured \n {}", e),
     };
 }
 
-async fn login_user(State(pool_state): State<AppState>, Json(payload): Json<NewUser>) -> String {
+async fn login_user(State(pool_state): State<AppState>, Json(payload): Json<UserInput>) -> String {
     return match db_integration::login_user(&pool_state.pool, payload.username, payload.email, payload.password).await {
         Ok(s) => s,
         Err(e) => format!("An error occured Failed with: \n {}", e),
