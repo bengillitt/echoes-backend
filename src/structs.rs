@@ -30,7 +30,7 @@ pub struct Message {
     pub embedding: Vec<f32>,
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Serialize, Debug)]
 pub struct MessageWithScore {
     pub id: i32,
     pub contents: String,

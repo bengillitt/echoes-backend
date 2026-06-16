@@ -269,7 +269,10 @@ pub async fn get_similar_messages(pool: &SqlitePool, embedded_prompt: Vec<f32>) 
     let mut similar_messages: Vec<MessageWithScore> = Vec::new();
 
     for message in messages {
-        let score = embedding_integration::calculate_similarity(&message.embedding, &embedded_prompt)?;
+        let score = match embedding_integration::calculate_similarity(&message.embedding, &embedded_prompt) {
+            Ok(v) => v,
+            Err(e) => continue,
+        };
 
         if score > 0.6 {
             similar_messages.push(MessageWithScore {
@@ -284,6 +287,8 @@ pub async fn get_similar_messages(pool: &SqlitePool, embedded_prompt: Vec<f32>) 
         }
     }
 
+    println!("{:?}", similar_messages);
+
     // Create a sorting algorithm
     let sorted_messages = match algorithms::sort_messages_by_similarity(similar_messages) {
         Ok(v) => v,
@@ -297,7 +302,7 @@ pub async fn get_similar_messages(pool: &SqlitePool, embedded_prompt: Vec<f32>) 
 
 
 async fn get_messages(pool: &SqlitePool) -> Result<Vec<Message>, String> {
-    let data: Vec<MessageReturnData> = match sqlx::query_as::<_, MessageReturnData>("SELECT id, contents, message_role, chat_id, position, embedding FROM tblEmbeddings;").fetch_all(pool).await {
+    let data: Vec<MessageReturnData> = match sqlx::query_as::<_, MessageReturnData>("SELECT id, contents, message_role, chat_id, position, embedding FROM tblMessages;").fetch_all(pool).await {
         Ok(v) => v,
         Err(e) => return Err(format!("Failed to get embeddings from db. Failed with: \n {}", e)),
     };

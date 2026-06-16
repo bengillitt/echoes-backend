@@ -126,12 +126,16 @@ async fn login_user(State(pool_state): State<AppState>, Json(payload): Json<User
 async fn get_similar_chats(State(pool_state): State<AppState>, Json(payload): Json<Prompt>) -> Json<Vec<MessageWithScore>> {
     let embedded_prompt = match embedding_integration::get_embedding(payload.prompt).await  {
         Ok(v) => v,
-        Err(e) => return Json(vec![]),
+        Err(e) => {
+            eprintln!("Error occurred while fetching embedding: {}", e);
+            return Json(vec![])},
     };
     
     let return_data = match db_integration::get_similar_messages(&pool_state.pool, embedded_prompt).await {
         Ok(s) => s,
-        Err(e) => return Json(vec![]),
+        Err(e) => {
+            eprintln!("Error occurred while fetching similar messages: {}", e);
+            return Json(vec![])},
      };
 
      return Json(return_data);
