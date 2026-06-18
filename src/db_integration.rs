@@ -7,7 +7,7 @@ use async_recursion::async_recursion;
 use tokio::sync::mpsc;
 
 use super::structs::{
-    ContinuationChat, ID, Message, MessageReturnData, MessageWithScore, User, UserId,
+    ContinuationChat, ID, Message, MessageReturnData, MessageWithScore, User, UserId, ChatReturnData
 };
 
 use super::algorithms;
@@ -731,6 +731,15 @@ pub async fn chat_interaction(
     }
 
     return return_data;
+}
+
+pub async fn get_chat(pool: &SqlitePool, id: i32) -> Result<String, String> {
+    let chat = match sqlx::query_as::<_, ChatReturnData>("SELECT id, user_id, continuation_chat_id FROM tblChats WHERE id = $1").bind(id).fetch_one(pool).await {
+        Ok(c) => c,
+        Err(e) => return Err(format!("Failed to fetch chat. Failed with: {}", e)),
+    };
+
+    return Ok("Change to a json data type".to_string());
 }
 
 fn check_token(token: String) -> Result<i32, String> {

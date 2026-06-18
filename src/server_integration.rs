@@ -17,7 +17,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use super::{db_integration, embedding_integration};
 
 use super::structs::{
-    AppState, ChatInteractionInput, Claims, ContinueChatInput, Prompt, UserInput,
+    AppState, ChatInteractionInput, Claims, ContinueChatInput, Prompt, UserInput, ID
 };
 
 use dotenv::dotenv;
@@ -307,7 +307,7 @@ async fn chat_interaction(
     return (StatusCode::OK, Json(body)).into_response();
 }
 
-async fn lookup_chat(State(pool_state): State<AppState>) -> Response {
+async fn lookup_chat(State(pool_state): State<AppState>, Json(payload): Json<ID>) -> Response {
     return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": "In Progress!"}))).into_response();
 }
 

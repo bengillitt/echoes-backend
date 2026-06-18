@@ -30,6 +30,27 @@ pub struct Message {
     pub embedding: Vec<f32>,
 }
 
+pub struct MessageResponse {
+    pub id: i32,
+    pub contents: String,
+    pub message_role: i32,
+    pub position: i32,
+}
+
+#[derive(FromRow)]
+pub struct ChatReturnData {
+    pub id: i32,
+    pub user_id: i32,
+    pub continuation_chat_id: i32,
+}
+
+pub struct ChatResponse {
+    pub id: i32,
+    pub user_id: i32,
+    pub messages: Vec<MessageResponse>,
+    pub feedback: i32,
+}
+
 #[derive(Clone, Serialize, Debug)]
 pub struct MessageWithScore {
     pub id: i32,
@@ -51,7 +72,7 @@ pub struct User {
     pub is_admin: bool,
 }
 
-#[derive(FromRow)]
+#[derive(FromRow, Deserialize)]
 pub struct ID {
     pub id: i32,
 }
