@@ -3,6 +3,8 @@ use argon2::{
     password_hash::{SaltString, rand_core::OsRng},
 };
 
+use crate::structs::{Message, MessageResponse};
+
 use super::structs::{Claims, MessageWithScore, PasswordPair};
 
 use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode};
@@ -96,6 +98,57 @@ fn merge_messages(
 
     return merged;
 }
+
+
+pub fn sort_messages_by_position(
+    messages: Vec<MessageResponse>,
+) -> Result<Vec<MessageResponse>, String> {
+    let sorted_messages = messages.clone();
+
+    if sorted_messages.len() <= 1 {
+        return Ok(sorted_messages);
+    }
+
+    let midpoint = sorted_messages.len() / 2;
+
+    let left = sort_messages_by_position(sorted_messages[..midpoint].to_vec())?;
+    let right = sort_messages_by_position(sorted_messages[midpoint..].to_vec())?;
+
+    return Ok(merge_messages_by_position(left, right));
+}
+
+fn merge_messages_by_position(
+    left: Vec<MessageResponse>,
+    right: Vec<MessageResponse>,
+) -> Vec<MessageResponse> {
+    let mut merged: Vec<MessageResponse> = Vec::new();
+
+    let mut left_index = 0;
+    let mut right_index = 0;
+
+    while left_index < left.len() && right_index < right.len() {
+        if left[left_index].position < right[right_index].position {
+            merged.push(left[left_index].clone());
+            left_index += 1;
+        } else {
+            merged.push(right[right_index].clone());
+            right_index += 1;
+        }
+    }
+
+    while left_index < left.len() {
+        merged.push(left[left_index].clone());
+        left_index += 1;
+    }
+
+    while right_index < right.len() {
+        merged.push(right[right_index].clone());
+        right_index += 1;
+    }
+
+    return merged;
+}
+
 
 // -----------------
 // JWT Functions

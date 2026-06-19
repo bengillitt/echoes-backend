@@ -1,5 +1,7 @@
 use super::embedding_integration;
 use super::llm_integration;
+use futures::sink::Feed;
+use sqlx::database;
 pub use sqlx::sqlite::SqlitePool;
 
 use async_recursion::async_recursion;
@@ -7,7 +9,7 @@ use async_recursion::async_recursion;
 use tokio::sync::mpsc;
 
 use super::structs::{
-    ContinuationChat, ID, Message, MessageReturnData, MessageWithScore, User, UserId, ChatReturnData
+    ContinuationChat, ID, Message, MessageReturnData, MessageWithScore, User, UserId, ChatReturnData, MessageResponse, ChatResponse, FeedbackData
 };
 
 use super::algorithms;
@@ -505,7 +507,7 @@ pub async fn continue_chat(
             }
         };
 
-    let mut new_chat_id = chat_id;
+    let new_chat_id: i32;
 
     if !is_owner {
         new_chat_id = match create_new_chat_record(pool, user_id, Some(chat_id)).await {
@@ -517,9 +519,11 @@ pub async fn continue_chat(
                 ));
             }
         };
+    } else {
+        new_chat_id = chat_id;
     }
 
-    let position = match get_next_position(pool, new_chat_id).await {
+    let position = match get_next_position(pool, chat_id).await {
         Ok(v) => v,
         Err(e) => {
             return Err(format!(
@@ -733,13 +737,150 @@ pub async fn chat_interaction(
     return return_data;
 }
 
-pub async fn get_chat(pool: &SqlitePool, id: i32) -> Result<String, String> {
+#[async_recursion]
+async fn get_chat_messages(pool: &SqlitePool, id: i32, position: Option<i32>) -> Result<Vec<MessageResponse>, String> {
     let chat = match sqlx::query_as::<_, ChatReturnData>("SELECT id, user_id, continuation_chat_id FROM tblChats WHERE id = $1").bind(id).fetch_one(pool).await {
         Ok(c) => c,
         Err(e) => return Err(format!("Failed to fetch chat. Failed with: {}", e)),
     };
 
-    return Ok("Change to a json data type".to_string());
+    let mut messages: Vec<MessageResponse> = Vec::new();
+
+    if position.is_none() {
+        let raw_messages: Vec<MessageReturnData> = match sqlx::query_as::<_, MessageReturnData>(
+            "SELECT id, contents, message_role, chat_id, position, embedding FROM tblMessages WHERE chat_id = $1;",
+        ).bind(id)
+        .fetch_all(pool)
+        .await
+        {
+            Ok(v) => v,
+            Err(e) => {
+                return Err(format!(
+                    "Failed to get embeddings from db. Failed with: \n {}",
+                    e
+                ));
+            }
+        };
+
+        messages.extend(raw_messages.into_iter().map(|x| MessageResponse {
+            id: x.id,
+            contents: x.contents,
+            message_role: x.message_role,
+            position: x.position,
+        }));
+    } else {
+        let raw_messages: Vec<MessageReturnData> = match sqlx::query_as::<_, MessageReturnData>(
+            "SELECT id, contents, message_role, chat_id, position, embedding FROM tblMessages WHERE chat_id = $1 AND position < $2;",
+        ).bind(id).bind(position.unwrap())
+        .fetch_all(pool)
+        .await
+        {
+            Ok(v) => v,
+            Err(e) => {
+                return Err(format!(
+                    "Failed to get embeddings from db. Failed with: \n {}",
+                    e
+                ));
+            }
+        };
+
+        messages.extend(raw_messages.into_iter().map(|x| MessageResponse {
+            id: x.id,
+            contents: x.contents,
+            message_role: x.message_role,
+            position: x.position,
+        }));
+    }
+
+    let mut min_position: Option<i32>;
+
+    if (messages.len() != 0) {
+        min_position = Some(messages[0].position);
+    } else {
+        min_position = None;
+    }
+
+    if min_position.is_some() {
+        for m in &messages {
+            if min_position.unwrap() > m.position {
+                min_position = Some(m.position);
+            }
+        }
+    }
+
+    if (chat.continuation_chat_id != None) {
+        let continuationMessages = match get_chat_messages(pool, chat.continuation_chat_id.unwrap(), min_position).await {
+            Ok(v) => v,
+            Err(e) => return Err(format!("An error occured. Failed with: {}", e)),
+        };
+
+        messages.extend(continuationMessages);
+    }
+
+    return Ok(messages);
+}
+
+#[async_recursion]
+async fn get_feedback(pool: &SqlitePool, id: i32) -> Result<i32, String>{
+    let chat = match sqlx::query_as::<_, ChatReturnData>("SELECT id, user_id, continuation_chat_id FROM tblChats WHERE id = $1").bind(id).fetch_one(pool).await {
+        Ok(c) => c,
+        Err(e) => return Err(format!("Failed to fetch chat. Failed with: {}", e)),
+    };
+
+    let mut feedback: i32 = 0;   
+
+    if chat.continuation_chat_id != None {
+        feedback += match get_feedback(pool, chat.continuation_chat_id.unwrap()).await {
+            Ok(f) => f,
+            Err(e) => return Err(e),
+        };
+    }
+
+    let raw_feedback_data: Vec<FeedbackData> = match sqlx::query_as::<_, FeedbackData>("SELECT user_id, chat_id, vote_type FROM tblFeedback WHERE chat_id = $1;").bind(id).fetch_all(pool).await {
+        Ok(v) => v,
+        Err(e) => return Err(format!("An error occured fetching feedback. Failed with: {}", e)),
+    };
+
+    for f in raw_feedback_data {
+        if (f.vote_type == 1) {
+            feedback += 1;
+        } else {
+            feedback -= 1;
+        }
+    }
+
+    return Ok(feedback);
+}
+
+pub async fn get_chat(pool: &SqlitePool, id: i32) -> Result<ChatResponse, String> {
+    let messages = match get_chat_messages(pool, id, None).await {
+        Ok(v) => v,
+        Err(e) => return Err(format!("Error fetching messages: {}", e)),
+    };
+
+    let databaseResponse: ChatReturnData = match sqlx::query_as::<_, ChatReturnData>("SELECT id, user_id, continuation_chat_id FROM tblChats WHERE id = $1").bind(id).fetch_one(pool).await {
+        Ok(c) => c,
+        Err(e) => return Err(format!("Failed to fetch chat. Failed with: {}", e)),
+    };
+
+    let feedback_score = match get_feedback(pool, id).await {
+        Ok(f) => f,
+        Err(e) => return Err(e),
+    };
+
+    let messages = match algorithms::sort_messages_by_position(messages) {
+        Ok(v) => v,
+        Err(e) => return Err(e),
+    };
+
+    let response = ChatResponse { 
+        id: id,
+        user_id: databaseResponse.user_id,
+        messages: messages,
+        feedback: feedback_score,
+     };
+
+    return Ok(response);
 }
 
 fn check_token(token: String) -> Result<i32, String> {

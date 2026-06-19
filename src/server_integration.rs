@@ -308,7 +308,12 @@ async fn chat_interaction(
 }
 
 async fn lookup_chat(State(pool_state): State<AppState>, Json(payload): Json<ID>) -> Response {
-    return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": "In Progress!"}))).into_response();
+    let body = match db_integration::get_chat(&pool_state.pool, payload.id).await {
+        Ok(b) => b,
+        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e}))).into_response(),
+    };
+
+    return (StatusCode::OK, Json(body)).into_response();
 }
 
 async fn get_user(State(pool_state): State<AppState>) -> Response {
