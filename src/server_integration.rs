@@ -59,11 +59,11 @@ pub async fn spawn_server(mut rx: mpsc::Receiver<SqlitePool>) {
             get(|| async {}).post(continue_chat),
         )
         .route(
-            "/getChat", // In Progress
+            "/getChat", // Done
             get(|| async {}).post(lookup_chat),
         )
         .route(
-            "/chatInteraction", // In Progress
+            "/chatInteraction", // Done
             get(|| async {}).post(chat_interaction),
         )
         .with_state(state);
