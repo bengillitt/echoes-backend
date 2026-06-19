@@ -68,7 +68,7 @@ pub async fn spawn_server(mut rx: mpsc::Receiver<SqlitePool>) {
         )
         .with_state(state);
 
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:5000").await.unwrap();
     axum::serve(listener, app).await.unwrap();
 }
 
