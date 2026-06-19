@@ -1,7 +1,5 @@
 use super::embedding_integration;
 use super::llm_integration;
-use futures::sink::Feed;
-use sqlx::database;
 pub use sqlx::sqlite::SqlitePool;
 
 use async_recursion::async_recursion;
@@ -9,7 +7,7 @@ use async_recursion::async_recursion;
 use tokio::sync::mpsc;
 
 use super::structs::{
-    ContinuationChat, ID, Message, MessageReturnData, MessageWithScore, User, UserId, ChatReturnData, MessageResponse, ChatResponse, FeedbackData
+    ContinuationChat, ID, Message, MessageReturnData, MessageWithScore, User, UserId, ChatReturnData, MessageResponse, ChatResponse, FeedbackData, UserResponse
 };
 
 use super::algorithms;
@@ -794,7 +792,7 @@ async fn get_chat_messages(pool: &SqlitePool, id: i32, position: Option<i32>) ->
 
     let mut min_position: Option<i32>;
 
-    if (messages.len() != 0) {
+    if messages.len() != 0 {
         min_position = Some(messages[0].position);
     } else {
         min_position = None;
@@ -808,13 +806,13 @@ async fn get_chat_messages(pool: &SqlitePool, id: i32, position: Option<i32>) ->
         }
     }
 
-    if (chat.continuation_chat_id != None) {
-        let continuationMessages = match get_chat_messages(pool, chat.continuation_chat_id.unwrap(), min_position).await {
+    if chat.continuation_chat_id != None {
+        let continuation_messages = match get_chat_messages(pool, chat.continuation_chat_id.unwrap(), min_position).await {
             Ok(v) => v,
             Err(e) => return Err(format!("An error occured. Failed with: {}", e)),
         };
 
-        messages.extend(continuationMessages);
+        messages.extend(continuation_messages);
     }
 
     return Ok(messages);
@@ -842,7 +840,7 @@ async fn get_feedback(pool: &SqlitePool, id: i32) -> Result<i32, String>{
     };
 
     for f in raw_feedback_data {
-        if (f.vote_type == 1) {
+        if f.vote_type == 1 {
             feedback += 1;
         } else {
             feedback -= 1;
@@ -858,7 +856,7 @@ pub async fn get_chat(pool: &SqlitePool, id: i32) -> Result<ChatResponse, String
         Err(e) => return Err(format!("Error fetching messages: {}", e)),
     };
 
-    let databaseResponse: ChatReturnData = match sqlx::query_as::<_, ChatReturnData>("SELECT id, user_id, continuation_chat_id FROM tblChats WHERE id = $1").bind(id).fetch_one(pool).await {
+    let database_response: ChatReturnData = match sqlx::query_as::<_, ChatReturnData>("SELECT id, user_id, continuation_chat_id FROM tblChats WHERE id = $1").bind(id).fetch_one(pool).await {
         Ok(c) => c,
         Err(e) => return Err(format!("Failed to fetch chat. Failed with: {}", e)),
     };
@@ -875,12 +873,26 @@ pub async fn get_chat(pool: &SqlitePool, id: i32) -> Result<ChatResponse, String
 
     let response = ChatResponse { 
         id: id,
-        user_id: databaseResponse.user_id,
+        user_id: database_response.user_id,
         messages: messages,
         feedback: feedback_score,
      };
 
     return Ok(response);
+}
+
+pub async fn get_user_data_from_token(pool: &SqlitePool, token: String) -> Result<UserResponse, String> {
+    let user_id = match check_token(token) {
+        Ok(i) => i,
+        Err(e) => return Err(e),
+    };
+
+    let user_data: UserResponse = match sqlx::query_as::<_, UserResponse>("SELECT email, username FROM tblUsers WHERE id = $1;").bind(user_id).fetch_one(pool).await {
+        Ok(u) => u,
+        Err(e) => return Err(format!("Couldn't fetch user data. Failed with: {}", e)),
+    };
+
+    return Ok(user_data);
 }
 
 fn check_token(token: String) -> Result<i32, String> {

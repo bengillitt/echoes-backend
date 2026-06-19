@@ -3,7 +3,7 @@ use argon2::{
     password_hash::{SaltString, rand_core::OsRng},
 };
 
-use crate::structs::{Message, MessageResponse};
+use crate::structs::{MessageResponse};
 
 use super::structs::{Claims, MessageWithScore, PasswordPair};
 

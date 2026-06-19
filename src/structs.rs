@@ -40,7 +40,6 @@ pub struct MessageResponse {
 
 #[derive(FromRow)]
 pub struct ChatReturnData {
-    pub id: i32,
     pub user_id: i32,
     pub continuation_chat_id: Option<i32>,
 }
@@ -67,11 +66,14 @@ pub struct MessageWithScore {
 #[derive(Debug, sqlx::FromRow)]
 pub struct User {
     pub id: i32,
-    pub email: String,
-    pub username: String,
     pub hashed_password: String,
     pub salt: Vec<u8>,
-    pub is_admin: bool,
+}
+
+#[derive(FromRow, Serialize)]
+pub struct UserResponse {
+    pub email: String,
+    pub username: String,
 }
 
 #[derive(FromRow, Deserialize)]
@@ -91,8 +93,6 @@ pub struct ContinuationChat {
 
 #[derive(FromRow)]
 pub struct FeedbackData {
-    pub user_id: i32,
-    pub chat_id: i32,
     pub vote_type: i32,
 }
 
@@ -135,6 +135,11 @@ pub struct ChatInteractionInput {
 pub struct Claims {
     pub sub: String,
     pub exp: usize,
+}
+
+#[derive(Deserialize)]
+pub struct Token {
+    pub token: String,
 }
 
 // ---------------
