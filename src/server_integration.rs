@@ -6,7 +6,7 @@ use axum::response::{IntoResponse, Response};
 
 use jsonwebtoken::{EncodingKey, Header, encode};
 
-use axum::http::{StatusCode, header};
+use axum::http::{StatusCode, header, HeaderValue};
 
 use axum::extract::{Json, State};
 
@@ -15,6 +15,8 @@ use tokio::sync::mpsc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::{db_integration, embedding_integration};
+
+use tower_http::cors::{CorsLayer};
 
 use super::structs::{
     AppState, ChatInteractionInput, Claims, ContinueChatInput, Prompt, UserInput, ID, Token
@@ -28,6 +30,29 @@ pub async fn spawn_server(mut rx: mpsc::Receiver<SqlitePool>) {
     let pool = rx.recv().await.unwrap();
 
     let state = AppState { pool: pool };
+
+let cors = CorsLayer::new()
+    // 1. Explicitly allow your frontend origin (No wildcards here)
+    .allow_origin("http://localhost:3000".parse::<HeaderValue>().unwrap())
+    
+    // 2. Explicitly list the allowed methods (or keep Any, standard allows methods to be Any)
+    .allow_methods([
+        axum::http::Method::GET,
+        axum::http::Method::POST,
+        axum::http::Method::PUT,
+        axum::http::Method::DELETE,
+        axum::http::Method::OPTIONS,
+    ])
+    
+    // 3. EXPLICITLY list the headers instead of using `Any` / `*`
+    .allow_headers([
+        header::CONTENT_TYPE,
+        header::AUTHORIZATION,
+        header::ACCEPT,
+    ])
+    
+    // 4. Now this is safely allowed!
+    .allow_credentials(true);
 
     let app = Router::new()
         .route(
@@ -66,9 +91,10 @@ pub async fn spawn_server(mut rx: mpsc::Receiver<SqlitePool>) {
             "/chatInteraction", // Done
             get(|| async {}).post(chat_interaction),
         )
-        .with_state(state);
+        .with_state(state)
+        .layer(cors);
 
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:5000").await.unwrap();
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:8080").await.unwrap();
     axum::serve(listener, app).await.unwrap();
 }
 
@@ -122,7 +148,7 @@ async fn register_user(
         }
     };
 
-    let cookie = format!("token={}; HttpOnly; Secure;", token);
+    let cookie = format!("token={}; HttpOnly; Secure; SameSite=None; Path=/", token);
 
     let body = Json(json!({
         "message": "User registered successfully",
@@ -181,7 +207,8 @@ async fn login_user(
         }
     };
 
-    let cookie = format!("token={}; HttpOnly; Secure;", token);
+    let cookie = format!("token={}; HttpOnly; Secure; SameSite=None; Path=/", token);
+
 
     let body = Json(json!({
         "message": "User logged in successfully",
