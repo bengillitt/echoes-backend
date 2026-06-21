@@ -1,4 +1,5 @@
 use axum::{Router, routing::get};
+use axum_extra::extract::cookie::CookieJar;
 
 use sqlx::sqlite::SqlitePool;
 
@@ -19,7 +20,7 @@ use super::{db_integration, embedding_integration};
 use tower_http::cors::{CorsLayer};
 
 use super::structs::{
-    AppState, ChatInteractionInput, Claims, ContinueChatInput, Prompt, UserInput, ID, Token
+    AppState, ChatInteractionInput, Claims, ContinueChatInput, Prompt, UserInput, ID
 };
 
 use dotenv::dotenv;
@@ -258,13 +259,21 @@ async fn get_similar_chats(
 
 async fn create_new_chat(
     State(pool_state): State<AppState>,
+    jar: CookieJar,
     Json(payload): Json<Prompt>,
 ) -> Response {
     // Need to first figure out how tokens work to get and keep user data
+    let token = match jar.get("token") {
+        Some(t) => t.value().to_string(),
+        None => return (StatusCode::UNAUTHORIZED, Json(json!({
+            "error": "No Token found"
+        }))).into_response(),
+    };
+
     let body = match db_integration::upload_and_return_chat(
         &pool_state.pool,
         payload.prompt,
-        payload.token,
+        token,
     )
     .await
     {
@@ -279,13 +288,21 @@ async fn create_new_chat(
 
 async fn continue_chat(
     State(pool_state): State<AppState>,
+    jar: CookieJar,
     Json(payload): Json<ContinueChatInput>,
 ) -> Response {
+    let token = match jar.get("token") {
+        Some(t) => t.value().to_string(),
+        None => return (StatusCode::UNAUTHORIZED, Json(json!({
+            "error": "No Token found"
+        }))).into_response(),
+    };
+
     let body = match db_integration::continue_chat(
         &pool_state.pool,
         payload.chat_id,
         payload.prompt,
-        payload.token,
+        token,
     )
     .await
     {
@@ -293,7 +310,9 @@ async fn continue_chat(
         Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e}))).into_response(),
     };
 
-    return (StatusCode::OK, Json(body)).into_response();
+    return (StatusCode::OK, Json(json!({
+        "chat_id": body,
+    }))).into_response();
 }
 
 // async fn test_similarity(Json(payload): Json<SimilarityPrompts>) -> String {
@@ -317,13 +336,21 @@ async fn continue_chat(
 
 async fn chat_interaction(
     State(pool_state): State<AppState>,
+    jar: CookieJar,
     Json(payload): Json<ChatInteractionInput>,
 ) -> Response {
+    let token = match jar.get("token") {
+        Some(t) => t.value().to_string(),
+        None => return (StatusCode::UNAUTHORIZED, Json(json!({
+            "error": "No Token found"
+        }))).into_response(),
+    };
+
     let body = match db_integration::chat_interaction(
         &pool_state.pool,
         payload.chat_id,
         payload.interaction,
-        payload.token,
+        token,
     )
     .await
     {
@@ -343,8 +370,15 @@ async fn lookup_chat(State(pool_state): State<AppState>, Json(payload): Json<ID>
     return (StatusCode::OK, Json(body)).into_response();
 }
 
-async fn get_user(State(pool_state): State<AppState>, Json(payload): Json<Token>) -> Response {
-    let user_data = match db_integration::get_user_data_from_token(&pool_state.pool, payload.token).await {
+async fn get_user(State(pool_state): State<AppState>, jar: CookieJar) -> Response {
+    let token = match jar.get("token") {
+        Some(t) => t.value().to_string(),
+        None => return (StatusCode::UNAUTHORIZED, Json(json!({
+            "error": "No Token found"
+        }))).into_response(),
+    };
+
+    let user_data = match db_integration::get_user_data_from_token(&pool_state.pool, token).await {
         Ok(u) => u,
         Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e}))).into_response(),
     };

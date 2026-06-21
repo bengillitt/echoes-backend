@@ -452,7 +452,7 @@ pub async fn continue_chat(
     chat_id: i32,
     prompt: String,
     token: String,
-) -> Result<String, String> {
+) -> Result<i32, String> {
     let user_id = match check_token(token) {
         Ok(v) => v,
         Err(e) => return Err(format!("Failed to verify token. Failed with: \n {}", e)),
@@ -475,8 +475,6 @@ pub async fn continue_chat(
 
     context.push_str(&context_str);
     context.push_str("\n\nEnd of context. Please answer the following prompt: \n\n");
-
-    println!("Context: {}", context);
 
     let response = match llm_integration::upload_to_llm(prompt.clone(), Some(context)).await {
         Ok(v) => v,
@@ -553,7 +551,7 @@ pub async fn continue_chat(
         }
     };
 
-    return Ok(response);
+    return Ok(new_chat_id);
 }
 
 pub async fn get_similar_messages(

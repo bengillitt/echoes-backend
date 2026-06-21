@@ -102,7 +102,7 @@ pub struct FeedbackData {
 #[derive(Deserialize)]
 pub struct Prompt {
     pub prompt: String,
-    pub token: String,
+    // pub token: String,
 }
 
 #[derive(Clone)]
@@ -121,14 +121,14 @@ pub struct UserInput {
 pub struct ContinueChatInput {
     pub chat_id: i32,
     pub prompt: String,
-    pub token: String,
+    // pub token: String,
 }
 
 #[derive(Deserialize)]
 pub struct ChatInteractionInput {
     pub chat_id: i32,
     pub interaction: i32, // 1 = like, 0 = dislike
-    pub token: String,
+    // pub token: String,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -137,10 +137,10 @@ pub struct Claims {
     pub exp: usize,
 }
 
-#[derive(Deserialize)]
-pub struct Token {
-    pub token: String,
-}
+// #[derive(Deserialize)]
+// pub struct Token {
+//     pub token: String,
+// }
 
 // ---------------
 // Algorithms
