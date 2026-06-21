@@ -396,7 +396,19 @@ async fn get_next_position(pool: &SqlitePool, chat_id: i32) -> Result<i32, Strin
         Err(e) => return Err(format!("Failed to get next position. Failed with: \n {}", e)),
     };
 
-    return Ok(data.len() as i32);
+    if data.len() == 0 {
+        return Err(format!("Chat shouldn't be empty"));
+    }
+
+    let mut max: i32 = data[0].position;
+
+    for message in data {
+        if message.position > max {
+            max = message.position;
+        }
+    }
+
+    return Ok(max + 1);
 }
 
 #[async_recursion]
