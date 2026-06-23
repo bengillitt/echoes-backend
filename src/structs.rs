@@ -111,9 +111,15 @@ pub struct AppState {
 }
 
 #[derive(Deserialize)]
-pub struct UserInput {
+pub struct UserRegisterInput {
     pub username: String,
     pub email: String,
+    pub password: String,
+}
+
+#[derive(Deserialize)]
+pub struct UserLoginInput {
+    pub user_identifier: String,
     pub password: String,
 }
 

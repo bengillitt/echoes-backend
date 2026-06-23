@@ -2,6 +2,12 @@ use super::embedding_integration;
 use super::llm_integration;
 pub use sqlx::sqlite::SqlitePool;
 
+use axum::response::{IntoResponse, Response};
+use axum::http::StatusCode;
+use axum::extract::Json;
+use serde_json::json;
+
+
 use async_recursion::async_recursion;
 
 use tokio::sync::mpsc;
@@ -32,14 +38,18 @@ pub async fn register_user(
     username: String,
     email: String,
     hashed_password: String,
-) -> Result<String, String> {
+) -> Result<String, Response> {
     if !email.contains("@") || !email.contains(".") {
         // Could change this so it scans for TLDs
-        return Err("Invalid Email".to_string());
+        return Err((StatusCode::BAD_REQUEST, Json(json!({
+            "error": "Email format isn't correct",
+        }))).into_response());
     }
 
     if username == "".to_string() {
-        return Err("Invalid username. Cannot be empty".to_string());
+        return Err((StatusCode::BAD_REQUEST, Json(json!({
+            "error": "Username cannot be empty",
+        }))).into_response());
     }
 
     let mut is_alphanumeric: bool = true;
@@ -52,28 +62,43 @@ pub async fn register_user(
     }
 
     if !is_alphanumeric {
-        return Err("Invalid Username, can't contain symbols".to_string());
+        return Err((StatusCode::BAD_REQUEST, Json(json!({
+            "error": "Username can't contain symbols",
+        }))).into_response());
     }
 
     let users = match get_user_from_username(pool, &username).await {
         Ok(v) => v,
-        Err(e) => return Err(e),
+        Err(_) => return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(json!({
+            "error": "Error fetching users",
+        }))).into_response()),
     };
 
     if users.len() > 0 {
-        return Err("Username already exists".to_string());
+        return Err((StatusCode::BAD_REQUEST, Json(json!({
+            "error": "Username already exists",
+        }))).into_response());
     }
 
     let users = match get_user_from_email(pool, &email).await {
         Ok(v) => v,
-        Err(e) => return Err(e),
+        Err(_) => return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(json!({
+            "error": "Error fetching users",
+    }))).into_response()),
     };
 
     if users.len() > 0 {
-        return Err("Email already exists".to_string());
+        return Err((StatusCode::BAD_REQUEST, Json(json!({
+            "error": "Email already exists",
+        }))).into_response());
     }
 
-    return upload_user(pool, username, email, hashed_password).await;
+    return match upload_user(pool, username, email, hashed_password).await {
+        Ok(id) => Ok(id),
+        Err(_) => Err((StatusCode::INTERNAL_SERVER_ERROR, Json(json!({
+            "error": "Couldn't upload user",
+        }))).into_response()),
+    };
 }
 
 async fn upload_user(
@@ -105,41 +130,57 @@ async fn upload_user(
 
 pub async fn login_user(
     pool: &SqlitePool,
-    username: String,
-    email: String,
-    password: String,
-) -> Result<String, String> {
-    if username == "".to_string() && email == "".to_string() {
-        return Err("Must provide a username or email.".to_string());
+    user_identifier: String,
+    password: String
+) -> Result<String, Response> {
+    if &user_identifier[..] == "" {
+        return Err((StatusCode::BAD_REQUEST, Json(json!({
+            "error": "Username/Email cannot be empty",
+        }))).into_response());
     }
 
-    if username != "".to_string() {
-        return login_user_with_username(pool, username, password).await;
+    let sqlx_query = match sqlx::query_as::<_, ID>("SELECT id FROM tblUsers WHERE username = $1").bind(&user_identifier).fetch_all(pool).await {
+        Ok(v) => v,
+        Err(_) => return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(json!({
+            "error": "Couldn't fetch users",
+        }))).into_response()),
+    };
+
+    if sqlx_query.len() != 0 {
+        return login_user_with_username(pool, user_identifier, password).await
     } else {
-        return login_user_with_email(pool, email, password).await;
+        return login_user_with_email(pool, user_identifier, password).await;
     }
 }
 
-fn check_user_password(users: &Vec<User>, password: String) -> Result<String, String> {
+fn check_user_password(users: &Vec<User>, password: String) -> Result<String, Response> {
     if users.len() == 0 {
-        return Err(format!("Incorrect Credentials"));
+        return Err((StatusCode::BAD_REQUEST, Json(json!({
+            "error": "Incorrect Credentials",
+        }))).into_response());
     }
 
     if users.len() == 1 {
         let hashed_password =
             match algorithms::hash_password_with_salt(password, users[0].salt.clone()) {
                 Ok(v) => v.hashed_password,
-                Err(_) => return Err("Can't hash password".to_string()),
+                Err(_) => return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(json!({
+                    "error": "Unable to hash password",
+                }))).into_response()),
             };
 
         if users[0].hashed_password == hashed_password {
             return Ok(users[0].id.to_string());
         } else {
-            return Err(format!("Incorrect Credentials"));
+            return Err((StatusCode::BAD_REQUEST, Json(json!({
+                "error": "Incorrect Credentials",
+            }))).into_response());
         }
     } else {
         return Err(
-            "DB Error, more than 1 user with those credentials, contact support".to_string(),
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({
+                "error": "Server error, multiple users in db",
+            }))).into_response()
         );
     }
 }
@@ -148,10 +189,12 @@ async fn login_user_with_username(
     pool: &SqlitePool,
     username: String,
     hashed_password: String,
-) -> Result<String, String> {
+) -> Result<String, Response> {
     let users = match get_user_from_username(pool, &username).await {
         Ok(v) => v,
-        Err(e) => return Err(format!("Database Error. Failed with: \n {}", e)),
+        Err(_) => return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(json!({
+            "error": "Couldn't fetch user",
+        }))).into_response()),
     };
 
     return check_user_password(&users, hashed_password);
@@ -161,14 +204,13 @@ async fn login_user_with_email(
     pool: &SqlitePool,
     email: String,
     hashed_password: String,
-) -> Result<String, String> {
+) -> Result<String, Response> {
     let users = match get_user_from_email(pool, &email).await {
         Ok(v) => v,
-        Err(e) => {
-            return Err(format!(
-                "Failed to find user. Failed with: \n {}",
-                e.to_string()
-            ));
+        Err(_) => {
+            return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(json!({
+                "error": "Couldn't fetch users",
+            }))).into_response());
         }
     };
 
@@ -335,56 +377,60 @@ pub async fn upload_and_return_chat(
     pool: &SqlitePool,
     prompt: String,
     token: String,
-) -> Result<String, String> {
+) -> Result<String, Response> {
     let user_id = match check_token(token) {
         Ok(v) => v,
-        Err(e) => return Err(format!("Failed to verify token. Failed with: \n {}", e)),
+        Err(_) => return Err((StatusCode::UNAUTHORIZED, Json(json!({
+            "error": "Invalid Token",
+        }))).into_response()),
     };
 
-    let user_data = get_user_from_id(pool, user_id).await?; // Check if user exists
+    let user_data = match get_user_from_id(pool, user_id).await {
+        Ok(id) => id,
+        Err(_) => return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(json!({
+            "error": "Couldn't fetch users",
+        }))).into_response()),
+    }; // Check if user exists
 
     if user_data.len() < 1 && user_data.len() > 1 {
-        return Err("User not found or multiple users found. Contact support".to_string());
+        return Err((StatusCode::BAD_REQUEST, Json(json!({
+            "error": "Couldn't find user",
+        }))).into_response());
     }
 
     let response = match llm_integration::upload_to_llm(prompt.clone(), None).await {
         Ok(v) => v,
-        Err(e) => return Err(format!("Failed to upload to llm. Failed with: \n {}", e)),
+        Err(_) => return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(json!({
+            "error": "LLM wouldn't response. Please try again later."
+        }))).into_response()),
     };
 
     let chat_id = match create_new_chat_record(pool, user_id, None).await {
         Ok(v) => v,
-        Err(e) => {
-            return Err(format!(
-                "Failed to create new chat record. Failed with: \n {}",
-                e
-            ));
-        }
+        Err(_) => return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(json!({
+                "error": "Couldn't create new chat record",
+            }))).into_response()),
     };
 
     let embedding = match embedding_integration::get_embedding(prompt.clone()).await {
         Ok(v) => v,
-        Err(e) => return Err(format!("Failed to get embedding. Failed with: \n {}", e)),
+        Err(_) => return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(json!({
+            "error": "Couldn't fetch embedding",
+        }))).into_response()),
     };
 
     match create_new_message_record(pool, chat_id, prompt, 0, 0, Some(embedding)).await {
         Ok(v) => v,
-        Err(e) => {
-            return Err(format!(
-                "Failed to create new message record. Failed with: \n {}",
-                e
-            ));
-        }
+        Err(_) => return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(json!({
+            "error": "Couldn't create new message record",
+        }))).into_response()),
     };
 
     match create_new_message_record(pool, chat_id, response.clone(), 1, 1, None).await {
         Ok(v) => v,
-        Err(e) => {
-            return Err(format!(
-                "Failed to create new message record. Failed with: \n {}",
-                e
-            ));
-        }
+        Err(_) => return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(json!({
+            "error": "Couldn't create new message record",
+        }))).into_response()),
     };
 
     return Ok(response);
@@ -464,16 +510,25 @@ pub async fn continue_chat(
     chat_id: i32,
     prompt: String,
     token: String,
-) -> Result<i32, String> {
+) -> Result<i32, Response> {
     let user_id = match check_token(token) {
         Ok(v) => v,
-        Err(e) => return Err(format!("Failed to verify token. Failed with: \n {}", e)),
+        Err(_) => return Err((StatusCode::UNAUTHORIZED, Json(json!({
+            "error": "Invalid Token",
+        }))).into_response()),
     };
 
-    let user_data = get_user_from_id(pool, user_id).await?; // Check if user exists
+    let user_data = match get_user_from_id(pool, user_id).await {
+        Ok(id) => id,
+        Err(_) => return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(json!({
+            "error": "Couldn't fetch user",
+        }))).into_response()),
+    }; // Check if user exists
 
     if user_data.len() < 1 && user_data.len() > 1 {
-        return Err("User not found or multiple users found. Contact support".to_string());
+        return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(json!({
+            "error": "Couldn't fetch users",
+        }))).into_response());
     }
 
     let mut context = String::new();
@@ -482,7 +537,9 @@ pub async fn continue_chat(
 
     let context_str = match get_context(pool, chat_id).await {
         Ok(v) => v,
-        Err(e) => return Err(format!("Failed to get context. Failed with: \n {}", e)),
+        Err(_) => return Err((StatusCode::BAD_REQUEST, Json(json!({
+            "error": "Couldn't fetch context for that chat",
+        }))).into_response()),
     };
 
     context.push_str(&context_str);
@@ -490,14 +547,18 @@ pub async fn continue_chat(
 
     let response = match llm_integration::upload_to_llm(prompt.clone(), Some(context)).await {
         Ok(v) => v,
-        Err(e) => return Err(format!("Failed to upload to llm. Failed with: \n {}", e)),
+        Err(_) => return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(json!({
+            "error": "LLM wouldn't response, please try again later.",
+        }))).into_response()),
     };
 
     let embedding =
         match embedding_integration::get_embedding(format!("{}{}", context_str, prompt)).await {
             // add previous prompt to context for embedding
             Ok(v) => v,
-            Err(e) => return Err(format!("Failed to get embedding. Failed with: \n {}", e)),
+            Err(_) => return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(json!({
+                "error": "Couldn't fetch embedding",
+            }))).into_response()),
         };
 
     let is_owner =
@@ -507,12 +568,9 @@ pub async fn continue_chat(
             .await
         {
             Ok(v) => v.user_id == user_id,
-            Err(e) => {
-                return Err(format!(
-                    "Failed to verify chat ownership. Failed with: \n {}",
-                    e
-                ));
-            }
+            Err(_) => return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(json!({
+                "error": "Couldn't fetch users",
+            }))).into_response()),
         };
 
     let new_chat_id: i32;
@@ -520,12 +578,9 @@ pub async fn continue_chat(
     if !is_owner {
         new_chat_id = match create_new_chat_record(pool, user_id, Some(chat_id)).await {
             Ok(v) => v,
-            Err(e) => {
-                return Err(format!(
-                    "Failed to create new chat record. Failed with: \n {}",
-                    e
-                ));
-            }
+            Err(_) => return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(json!({
+                "error": "Couldn't create new chat record",
+            }))).into_response()),
         };
     } else {
         new_chat_id = chat_id;
@@ -533,34 +588,25 @@ pub async fn continue_chat(
 
     let position = match get_next_position(pool, chat_id).await {
         Ok(v) => v,
-        Err(e) => {
-            return Err(format!(
-                "Failed to get next position. Failed with: \n {}",
-                e
-            ));
-        }
+        Err(_) => return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(json!({
+            "error": "Couldn't get next position for message",
+        }))).into_response()),
     };
 
     match create_new_message_record(pool, new_chat_id, prompt, position, 0, Some(embedding)).await {
         Ok(v) => v,
-        Err(e) => {
-            return Err(format!(
-                "Failed to create new message record. Failed with: \n {}",
-                e
-            ));
-        }
+        Err(_) => return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(json!({
+            "error": "Couldn't create new message record",
+        }))).into_response()),
     };
 
     match create_new_message_record(pool, new_chat_id, response.clone(), position + 1, 1, None)
         .await
     {
         Ok(v) => v,
-        Err(e) => {
-            return Err(format!(
-                "Failed to create new message record. Failed with: \n {}",
-                e
-            ));
-        }
+        Err(_) => return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(json!({
+            "error": "Couldn't create new message record",
+        }))).into_response()),
     };
 
     return Ok(new_chat_id);
@@ -690,26 +736,32 @@ pub async fn chat_interaction(
     chat_id: i32,
     interaction: i32,
     token: String,
-) -> Result<String, String> {
+) -> Result<String, Response> {
     let user_id = match check_token(token) {
         Ok(v) => v,
-        Err(e) => return Err(format!("Failed to verify token. Failed with: \n {}", e)),
+        Err(_) => return Err((StatusCode::UNAUTHORIZED, Json(json!({
+            "error": "Invalid Token",
+        }))).into_response()),
     };
 
-    let user_data = get_user_from_id(pool, user_id).await?; // Check if user exists
+    let user_data = match get_user_from_id(pool, user_id).await {
+        Ok(id) => id,
+        Err(_) => return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(json!({
+            "error": "Couldn't fetch users",
+        }))).into_response()),
+    }; // Check if user exists
 
     if user_data.len() < 1 && user_data.len() > 1 {
-        return Err("User not found or multiple users found. Contact support".to_string());
+        return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(json!({
+            "error": "Couldn't fetch users",
+        }))).into_response());
     }
 
     let previous_interaction = match check_previous_interaction(pool, chat_id, user_id).await {
         Ok(v) => v,
-        Err(e) => {
-            return Err(format!(
-                "Failed to check previous interaction. Failed with: \n {}",
-                e
-            ));
-        }
+        Err(_) => return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(json!({
+            "error": "Couldn't fetch previous interactions",
+        }))).into_response()),
     };
 
     let return_data;
@@ -725,7 +777,9 @@ pub async fn chat_interaction(
         .await
         {
             Ok(_) => Ok("Interaction updated successfully".to_string()),
-            Err(e) => return Err(format!("Failed to update feedback. Failed with: \n {}", e)),
+            Err(_) => return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(json!({
+                "error": "Couldn't update interaction",
+            }))).into_response()),
         };
     } else {
         return_data = match sqlx::query(
@@ -738,7 +792,9 @@ pub async fn chat_interaction(
         .await
         {
             Ok(_) => Ok("Interaction inserted successfully".to_string()),
-            Err(e) => return Err(format!("Failed to insert feedback. Failed with: \n {}", e)),
+            Err(_) => return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(json!({
+                "error": "Couldn't insert interaction",
+            }))).into_response()),
         };
     }
 
@@ -891,15 +947,19 @@ pub async fn get_chat(pool: &SqlitePool, id: i32) -> Result<ChatResponse, String
     return Ok(response);
 }
 
-pub async fn get_user_data_from_token(pool: &SqlitePool, token: String) -> Result<UserResponse, String> {
+pub async fn get_user_data_from_token(pool: &SqlitePool, token: String) -> Result<UserResponse, Response> {
     let user_id = match check_token(token) {
         Ok(i) => i,
-        Err(e) => return Err(e),
+        Err(_) => return Err((StatusCode::UNAUTHORIZED, Json(json!({
+            "error": "Invalid Token",
+        }))).into_response()),
     };
 
     let user_data: UserResponse = match sqlx::query_as::<_, UserResponse>("SELECT email, username FROM tblUsers WHERE id = $1;").bind(user_id).fetch_one(pool).await {
         Ok(u) => u,
-        Err(e) => return Err(format!("Couldn't fetch user data. Failed with: {}", e)),
+        Err(_) => return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(json!({
+            "error": "Couldn't fetch users",
+        }))).into_response()),
     };
 
     return Ok(user_data);

@@ -20,7 +20,7 @@ use super::{db_integration, embedding_integration};
 use tower_http::cors::{CorsLayer};
 
 use super::structs::{
-    AppState, ChatInteractionInput, Claims, ContinueChatInput, Prompt, UserInput, ID
+    AppState, ChatInteractionInput, Claims, ContinueChatInput, Prompt, UserLoginInput, UserRegisterInput, ID
 };
 
 use dotenv::dotenv;
@@ -101,7 +101,7 @@ let cors = CorsLayer::new()
 
 async fn register_user(
     State(pool_state): State<AppState>,
-    Json(payload): Json<UserInput>,
+    Json(payload): Json<UserRegisterInput>,
 ) -> Response {
     dotenv().ok();
     let secret = std::env::var("JWT_SECRET").expect("JWT_SECRET must be set in .env file");
@@ -120,13 +120,7 @@ async fn register_user(
     .await
     {
         Ok(s) => s,
-        Err(e) => {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("An error occured \n {}", e),
-            )
-                .into_response();
-        }
+        Err(e) => return e,
     };
 
     let claims = Claims {
@@ -160,7 +154,7 @@ async fn register_user(
 
 async fn login_user(
     State(pool_state): State<AppState>,
-    Json(payload): Json<UserInput>,
+    Json(payload): Json<UserLoginInput>,
 ) -> Response {
     dotenv().ok();
     let secret = std::env::var("JWT_SECRET").expect("JWT_SECRET must be set in .env file");
@@ -172,20 +166,13 @@ async fn login_user(
 
     let user_id = match db_integration::login_user(
         &pool_state.pool,
-        payload.username,
-        payload.email,
+        payload.user_identifier,
         payload.password,
     )
     .await
     {
         Ok(s) => s,
-        Err(e) => {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("An error occured Failed with: \n {}", e),
-            )
-                .into_response();
-        }
+        Err(e) => return e,
     };
 
     let claims = Claims {
@@ -224,27 +211,17 @@ async fn get_similar_chats(
 ) -> Response {
     let embedded_prompt = match embedding_integration::get_embedding(payload.prompt).await {
         Ok(v) => v,
-        Err(e) => {
-            eprintln!("Error occurred while fetching embedding: {}", e);
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "error": e })),
-            )
-                .into_response();
-        }
+        Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({
+            "error": "Couldn't fetch embedding",
+        }))).into_response(),
     };
 
     let return_data =
         match db_integration::get_similar_messages(&pool_state.pool, embedded_prompt).await {
             Ok(s) => s,
-            Err(e) => {
-                eprintln!("Error occurred while fetching similar messages: {}", e);
-                return (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(json!({ "error": e })),
-                )
-                    .into_response();
-            }
+            Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({
+                "error": "Couldn't fetch similar messages",
+            }))).into_response(),
         };
 
     return (StatusCode::OK, Json(return_data)).into_response();
@@ -278,9 +255,7 @@ async fn create_new_chat(
     .await
     {
         Ok(s) => s,
-        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({
-            "error": e
-        }))).into_response(),
+        Err(e) => return e,
     };
 
     return (StatusCode::OK, Json(body)).into_response();
@@ -307,7 +282,7 @@ async fn continue_chat(
     .await
     {
         Ok(s) => s,
-        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e}))).into_response(),
+        Err(e) => return e,
     };
 
     return (StatusCode::OK, Json(json!({
@@ -355,7 +330,7 @@ async fn chat_interaction(
     .await
     {
         Ok(s) => s,
-        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e}))).into_response(),
+        Err(e) => return e,
     };
 
     return (StatusCode::OK, Json(body)).into_response();
@@ -364,7 +339,9 @@ async fn chat_interaction(
 async fn lookup_chat(State(pool_state): State<AppState>, Json(payload): Json<ID>) -> Response {
     let body = match db_integration::get_chat(&pool_state.pool, payload.id).await {
         Ok(b) => b,
-        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e}))).into_response(),
+        Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({
+            "error": "Couldn't fetch chat",
+        }))).into_response(),
     };
 
     return (StatusCode::OK, Json(body)).into_response();
@@ -380,7 +357,7 @@ async fn get_user(State(pool_state): State<AppState>, jar: CookieJar) -> Respons
 
     let user_data = match db_integration::get_user_data_from_token(&pool_state.pool, token).await {
         Ok(u) => u,
-        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e}))).into_response(),
+        Err(e) => return e,
     };
 
     return (StatusCode::OK, Json(user_data)).into_response();
