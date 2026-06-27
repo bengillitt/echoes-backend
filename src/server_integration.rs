@@ -73,6 +73,10 @@ let cors = CorsLayer::new()
             get(|| async {}).post(login_user),
         )
         .route(
+            "/logout",
+            get( logout_user),
+        )
+        .route(
             "/getSimilarChats", // Done
             get(|| async {}).post(get_similar_chats),
         )
@@ -203,6 +207,12 @@ async fn login_user(
     }));
 
     return (StatusCode::OK, [(header::SET_COOKIE, cookie)], body).into_response();
+}
+
+async fn logout_user() -> Response {
+    let cookie = format!("token=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; Secure; SameSite=None");
+
+    return (StatusCode::OK, [(header::SET_COOKIE, cookie)]).into_response();
 }
 
 async fn get_similar_chats(
