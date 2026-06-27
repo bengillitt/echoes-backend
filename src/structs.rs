@@ -59,7 +59,6 @@ pub struct MessageWithScore {
     pub chat_id: i32,
     pub position: i32,
     pub message_role: i32,
-    pub embedding: Vec<f32>,
     pub score: f32,
 }
 

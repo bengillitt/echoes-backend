@@ -433,7 +433,7 @@ pub async fn upload_and_return_chat(
         }))).into_response()),
     };
 
-    return Ok(response);
+    return Ok(chat_id.to_string());
 }
 
 async fn get_next_position(pool: &SqlitePool, chat_id: i32) -> Result<i32, String> {
@@ -643,7 +643,6 @@ pub async fn get_similar_messages(
                 chat_id: message.chat_id,
                 position: message.position,
                 message_role: message.message_role,
-                embedding: message.embedding,
                 score,
             });
         }
@@ -660,7 +659,10 @@ pub async fn get_similar_messages(
         }
     };
 
-    return Ok(sorted_messages);
+    // Remove Duplicate chats
+    let filtered_messages = algorithms::remove_duplicate_chats(sorted_messages);
+
+    return Ok(filtered_messages);
 }
 
 async fn get_messages(pool: &SqlitePool) -> Result<Vec<Message>, String> {

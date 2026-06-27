@@ -169,3 +169,28 @@ pub fn verify_token(token_string: &str) -> Result<i32, jsonwebtoken::errors::Err
 
     Ok(token_data.claims.sub.parse::<i32>().unwrap())
 }
+
+// ---------------
+// Message Functions
+// ---------------
+
+pub fn remove_duplicate_chats(messages: Vec<MessageWithScore>) -> Vec<MessageWithScore> {
+    let mut filtered_messages: Vec<MessageWithScore> = Vec::new();
+
+    for message in messages {
+        let mut found = false;
+
+        for filtered_message in &filtered_messages {
+            if message.chat_id == filtered_message.chat_id {
+                found = true;
+                break;
+            }
+        }
+
+        if !found {
+            filtered_messages.push(message);
+        }
+    }
+
+    return filtered_messages;
+}

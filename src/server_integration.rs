@@ -247,7 +247,7 @@ async fn create_new_chat(
         }))).into_response(),
     };
 
-    let body = match db_integration::upload_and_return_chat(
+    let chat_id = match db_integration::upload_and_return_chat(
         &pool_state.pool,
         payload.prompt,
         token,
@@ -258,7 +258,9 @@ async fn create_new_chat(
         Err(e) => return e,
     };
 
-    return (StatusCode::OK, Json(body)).into_response();
+    return (StatusCode::OK, Json(json!({
+        "chat_id": chat_id,
+    }))).into_response();
 }
 
 async fn continue_chat(
