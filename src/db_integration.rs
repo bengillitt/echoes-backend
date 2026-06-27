@@ -1,3 +1,5 @@
+use crate::structs::ChatPreviewResponse;
+
 use super::embedding_integration;
 use super::llm_integration;
 pub use sqlx::sqlite::SqlitePool;
@@ -965,6 +967,24 @@ pub async fn get_user_data_from_token(pool: &SqlitePool, token: String) -> Resul
     };
 
     return Ok(user_data);
+}
+
+pub async fn get_user_chats_from_token(pool: &SqlitePool, token: String) -> Result<Vec<ChatPreviewResponse>, Response> {
+    let user_id = match check_token(token) {
+        Ok(i) => i,
+        Err(_) => return Err((StatusCode::UNAUTHORIZED, Json(json!({
+            "error": "Invalid Token",
+        }))).into_response()),
+    };
+
+    let chat_data = match sqlx::query_as::<_, ChatPreviewResponse>("SELECT id, title FROM tblChats WHERE user_id = $1").bind(user_id).fetch_all(pool).await {
+        Ok(v) => v,
+        Err(_) => return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(json!({
+            "error": "Couldn't fetch user chats",
+        }))).into_response())
+    };
+
+    return Ok(chat_data);
 }
 
 fn check_token(token: String) -> Result<i32, String> {

@@ -96,6 +96,10 @@ let cors = CorsLayer::new()
             "/chatInteraction", // Done
             get(|| async {}).post(chat_interaction),
         )
+        .route(
+            "/getUserChats",
+            get(|| async {}).post(get_user_chats),
+        )
         .with_state(state)
         .layer(cors);
 
@@ -373,4 +377,20 @@ async fn get_user(State(pool_state): State<AppState>, jar: CookieJar) -> Respons
     };
 
     return (StatusCode::OK, Json(user_data)).into_response();
-} 
+}
+
+async fn get_user_chats(State(pool_state): State<AppState>, jar: CookieJar) -> Response {
+    let token = match jar.get("token") {
+        Some(t) => t.value().to_string(),
+        None => return (StatusCode::UNAUTHORIZED, Json(json!({
+            "error": "No Token found"
+        }))).into_response(),
+    };
+
+    let chat_data = match db_integration::get_user_chats_from_token(&pool_state.pool, token).await {
+        Ok(c) => c,
+        Err(e) => return e,
+    };
+
+    return (StatusCode::OK, Json(chat_data)).into_response();
+}

@@ -142,6 +142,12 @@ pub struct Claims {
     pub exp: usize,
 }
 
+#[derive(Serialize, FromRow)]
+pub struct ChatPreviewResponse {
+    pub id: i32,
+    pub title: String,
+}
+
 // #[derive(Deserialize)]
 // pub struct Token {
 //     pub token: String,
