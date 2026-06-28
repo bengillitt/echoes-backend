@@ -414,6 +414,18 @@ pub async fn upload_and_return_chat(
             }))).into_response()),
     };
 
+    let title = match llm_integration::get_chat_title(&prompt).await {
+        Ok(v) => v,
+        Err(_) => return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(json!({
+            "error": "LLM wouldn't response. Please try again later."
+        }))).into_response()),
+    };
+
+    match sqlx::query("UPDATE tblChats SET title = $1 WHERE id = $2").bind(title).bind(chat_id).execute(pool).await {
+        Ok(_) => (),
+        Err(_) => ()
+    };
+
     let embedding = match embedding_integration::get_embedding(prompt.clone()).await {
         Ok(v) => v,
         Err(_) => return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(json!({
